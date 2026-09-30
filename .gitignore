@@ -1,0 +1,70 @@
+# Hawkgram generated code (rebuilt by the compilers / build hook)
+pyrogram/raw/all.py
+pyrogram/raw/base/
+pyrogram/raw/functions/
+pyrogram/raw/types/
+pyrogram/errors/exceptions/
+
+# Generated documentation sources and build output
+docs/source/telegram/
+docs/source/api/methods/
+docs/source/api/bound-methods/
+docs/source/api/types/
+docs/build/
+docs/_build/
+docs/source/_build/
+config.sh
+
+# Telegram sessions and local development files
+*.session
+*.session-journal
+config.ini
+main.py
+unknown_errors.txt
+.env
+.env.*
+
+# Byte-compiled / optimized files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+build/
+dist/
+wheels/
+sdist/
+*.egg-info/
+*.egg
+.eggs/
+MANIFEST
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Testing, coverage and type checking
+.pytest_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.hypothesis/
+.mypy_cache/
+.ruff_cache/
+
+# Editors and IDEs
+.idea/
+.vscode/
+*.swp
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
