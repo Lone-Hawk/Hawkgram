@@ -11,6 +11,15 @@ Welcome to Hawkgram
 
     <p align="center">
         <b>Telegram MTProto API Framework for Python</b>
+
+        <br>
+        <a href="https://github.com/Lone-Hawk/Hawkgram">
+            Source
+        </a>
+        •
+        <a href="https://github.com/Lone-Hawk/Hawkgram/issues">
+            Issues
+        </a>
     </p>
 
 .. code-block:: python

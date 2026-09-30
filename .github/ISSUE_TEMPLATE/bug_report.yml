@@ -10,7 +10,7 @@ body:
           required: true
         - label: I have searched in the issue tracker for similar bug reports, including closed ones
           required: true
-        - label: I reproduced the issue using the latest version of Hawkgram
+        - label: I ran `pip3 install -U git+https://github.com/Lone-Hawk/Hawkgram` and reproduced the issue using the latest development version
           required: true
 
   - type: textarea

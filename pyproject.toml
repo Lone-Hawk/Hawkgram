@@ -38,6 +38,11 @@ path = "pyrogram/__init__.py"
 # Used to call hatch_build.py
 [tool.hatch.build.hooks.custom]
 
+[project.urls]
+Homepage = "https://github.com/Lone-Hawk/Hawkgram"
+Source = "https://github.com/Lone-Hawk/Hawkgram"
+Tracker = "https://github.com/Lone-Hawk/Hawkgram/issues"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

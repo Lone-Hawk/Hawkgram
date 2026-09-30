@@ -26,6 +26,15 @@ Install Hawkgram
 
         $ pip3 install -U hawkgram tgcrypto
 
+Bleeding Edge
+-------------
+
+You can install the development version from the git ``main`` branch using this command:
+
+.. code-block:: text
+
+    $ pip3 install -U https://github.com/Lone-Hawk/Hawkgram/archive/main.zip
+
 Verifying
 ---------
 

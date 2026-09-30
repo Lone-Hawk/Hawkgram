@@ -70,8 +70,11 @@ html_show_sourcelink = True
 html_show_copyright = False
 html_theme_options = {
     "icon": {
+        "repo": "fontawesome/brands/github",
         "edit": "material/file-edit-outline",
     },
+    "repo_url": "https://github.com/Lone-Hawk/Hawkgram/",
+    "repo_name": "Hawkgram",
     "globaltoc_collapse": True,
     "features": [
         "navigation.expand",
