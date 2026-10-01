@@ -89,3 +89,19 @@ exclude = [
 [tool.hatch.build.targets.wheel]
 ignore-vcs = true
 packages = ["pyrogram"]
+
+# Test runner used by CI (.github/workflows/python.yml) and locally with "tox"
+[tool.tox]
+legacy_tox_ini = """
+[tox]
+envlist = py
+
+[testenv]
+deps =
+    pytest>=7.4.3
+    pytest-asyncio>=0.21.1
+commands_pre =
+    python -c "from compiler.api.compiler import start as api; from compiler.errors.compiler import start as errors; api(); errors()"
+commands =
+    pytest {posargs:tests}
+"""
