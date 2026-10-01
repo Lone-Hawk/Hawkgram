@@ -19,19 +19,19 @@
 #  along with Hawkgram.  If not, see <http://www.gnu.org/licenses/>.
 
 import asyncio
-import ipaddress
 import logging
 import socket
 from typing import Tuple, Dict, TypedDict, Optional
 
-import socks
+from python_socks import ProxyType
+from python_socks.async_.asyncio import Proxy as AsyncioProxy
 
 log = logging.getLogger(__name__)
 
-proxy_type_by_scheme: Dict[str, int] = {
-    "SOCKS4": socks.SOCKS4,
-    "SOCKS5": socks.SOCKS5,
-    "HTTP": socks.HTTP,
+proxy_type_by_scheme: Dict[str, ProxyType] = {
+    "SOCKS4": ProxyType.SOCKS4,
+    "SOCKS5": ProxyType.SOCKS5,
+    "HTTP": ProxyType.HTTP,
 }
 
 
@@ -68,36 +68,17 @@ class TCP:
         if proxy_type is None:
             raise ValueError(f"Unknown proxy type {scheme}")
 
-        hostname = self.proxy.get("hostname")
-        port = self.proxy.get("port")
-        username = self.proxy.get("username")
-        password = self.proxy.get("password")
-
-        try:
-            ip_address = ipaddress.ip_address(hostname)
-        except ValueError:
-            is_proxy_ipv6 = False
-        else:
-            is_proxy_ipv6 = isinstance(ip_address, ipaddress.IPv6Address)
-
-        proxy_family = socket.AF_INET6 if is_proxy_ipv6 else socket.AF_INET
-        sock = socks.socksocket(proxy_family)
-
-        sock.set_proxy(
+        proxy = AsyncioProxy(
             proxy_type=proxy_type,
-            addr=hostname,
-            port=port,
-            username=username,
-            password=password
-        )
-        sock.settimeout(TCP.TIMEOUT)
-
-        await self.loop.sock_connect(
-            sock=sock,
-            address=destination
+            host=self.proxy.get("hostname"),
+            port=self.proxy.get("port"),
+            username=self.proxy.get("username"),
+            password=self.proxy.get("password")
         )
 
-        sock.setblocking(False)
+        # The proxy handshake runs asynchronously and returns a connected, non-blocking socket
+        host, port = destination
+        sock = await proxy.connect(dest_host=host, dest_port=port, timeout=TCP.TIMEOUT)
 
         self.reader, self.writer = await asyncio.open_connection(
             sock=sock

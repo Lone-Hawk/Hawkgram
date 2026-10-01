@@ -3,9 +3,14 @@ name = "hawkgram"
 dynamic = ["version"]
 description = "Elegant, modern and asynchronous Telegram MTProto API framework in Python for users and bots"
 authors = [{ name = "Lone Hawk" }]
+# cryptography provides AES when TgCrypto isn't installed and python-socks connects through proxies.
 # pymediainfo-pyrofork is a fork maintained by a single third party: it's capped at the latest reviewed release,
 # so a new release is only installed after it has been reviewed and the bound raised
-dependencies = ["pyaes==1.6.1", "pysocks==1.7.1", "pymediainfo-pyrofork>=6.0.1,<=6.0.2"]
+dependencies = [
+    "cryptography>=42.0.0",
+    "python-socks[asyncio]>=3.0.0,<4.0.0",
+    "pymediainfo-pyrofork>=6.0.1,<=6.0.2",
+]
 readme = "README.md"
 license = "LGPL-3.0-or-later"
 requires-python = "~=3.10"

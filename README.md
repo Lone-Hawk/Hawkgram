@@ -52,6 +52,19 @@ Hawkgram keeps the `pyrogram` import name, so existing code keeps working unchan
 
 ### Changelog
 
+#### Hawkgram 1.0.2: maintained dependencies
+
+- **`pyaes` replaced with `cryptography`.** When TgCrypto isn't installed, AES now runs in compiled code from the
+  actively maintained `cryptography` package instead of the unmaintained pure-Python `pyaes` (last release 2017).
+  The output is identical to before.
+- **`pysocks` replaced with `python-socks`.** Proxy connections (SOCKS4, SOCKS5 and HTTP) use the maintained
+  `python-socks` package instead of `pysocks` (last release 2019). The proxy handshake no longer blocks the client
+  while it waits. Proxy settings are unchanged.
+- The forked `tgcrypto-pyrofork` and `pymediainfo-pyrofork` dependencies are capped at their latest reviewed
+  releases, so a new release is only installed after it has been reviewed.
+
+Reinstall Hawkgram after updating so the new dependencies are installed.
+
 #### Hawkgram 1.0.1: security fixes
 
 All the issues below were inherited from Pyrofork. Updating is strongly recommended, especially on Linux and macOS.

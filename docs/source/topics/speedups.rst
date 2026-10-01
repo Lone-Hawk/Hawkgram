@@ -14,8 +14,9 @@ TgCrypto-pyrofork
 --------
 
 TgCrypto-pyrofork_ is a high-performance, easy-to-install cryptography library written in C as a Python
-extension. It is a replacement for a slower Python-only alternative and implements the cryptographic algorithms Telegram
-requires, namely: AES-256-IGE, AES-256-CTR and AES-256-CBC.
+extension. It implements the cryptographic algorithms Telegram requires, namely: AES-256-IGE, AES-256-CTR and
+AES-256-CBC. Without it, Hawkgram uses the `cryptography <https://cryptography.io>`_ package, which is slower for
+Telegram's AES-256-IGE mode because the chaining between blocks is done in Python.
 
 Installation
 ^^^^^^^^^^^^

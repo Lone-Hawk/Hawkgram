@@ -20,112 +20,103 @@
 
 import logging
 
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+
 log = logging.getLogger(__name__)
+
+
+def xor(a: bytes, b: bytes) -> bytes:
+    return int.to_bytes(
+        int.from_bytes(a, "big") ^ int.from_bytes(b, "big"),
+        len(a),
+        "big",
+    )
+
+
+# Implementation based on the "cryptography" package, used when TgCrypto isn't installed.
+# AES itself runs in compiled code; the IGE chaining and the CTR bookkeeping are done here.
+
+def _ige(data: bytes, key: bytes, iv: bytes, encrypt: bool) -> bytes:
+    # MTProto mandates AES-IGE, which "cryptography" doesn't offer. ECB is used here only as the raw AES block
+    # function: every block is chained through iv_1 and iv_2 below, so ECB's pattern leakage doesn't apply.
+    cipher = Cipher(algorithms.AES(key), modes.ECB())
+    aes = cipher.encryptor() if encrypt else cipher.decryptor()
+
+    iv_1 = iv[:16]
+    iv_2 = iv[16:]
+
+    data = [data[i: i + 16] for i in range(0, len(data), 16)]
+
+    if encrypt:
+        for i, chunk in enumerate(data):
+            iv_1 = data[i] = xor(aes.update(xor(chunk, iv_1)), iv_2)
+            iv_2 = chunk
+    else:
+        for i, chunk in enumerate(data):
+            iv_2 = data[i] = xor(aes.update(xor(chunk, iv_2)), iv_1)
+            iv_1 = chunk
+
+    return b"".join(data)
+
+
+def _ctr(data: bytes, key: bytes, iv: bytearray, state: bytearray) -> bytes:
+    """AES-256-CTR over a stream split across calls.
+
+    *iv* is the current 128-bit big-endian counter block and *state[0]* the offset within its keystream block.
+    Both are updated in place, like TgCrypto does, so consecutive calls continue the same keystream.
+    """
+    offset = state[0]
+
+    keystream = Cipher(algorithms.AES(key), modes.CTR(bytes(iv))).encryptor().update(bytes(offset + len(data)))
+    keystream = keystream[offset:]
+
+    out = (int.from_bytes(data, "big") ^ int.from_bytes(keystream, "big")).to_bytes(len(data), "big")
+
+    blocks_used, state[0] = divmod(offset + len(data), 16)
+    iv[:] = ((int.from_bytes(iv, "big") + blocks_used) % (1 << 128)).to_bytes(16, "big")
+
+    return out
+
+
+def _ige256_encrypt(data: bytes, key: bytes, iv: bytes) -> bytes:
+    return _ige(data, key, iv, True)
+
+
+def _ige256_decrypt(data: bytes, key: bytes, iv: bytes) -> bytes:
+    return _ige(data, key, iv, False)
+
+
+def _ctr256_encrypt(data: bytes, key: bytes, iv: bytearray, state: bytearray = None) -> bytes:
+    return _ctr(data, key, iv, state or bytearray(1))
+
+
+def _ctr256_decrypt(data: bytes, key: bytes, iv: bytearray, state: bytearray = None) -> bytes:
+    return _ctr(data, key, iv, state or bytearray(1))
+
 
 try:
     import tgcrypto
 
     log.info("Using TgCrypto")
 
-
     def ige256_encrypt(data: bytes, key: bytes, iv: bytes) -> bytes:
         return tgcrypto.ige256_encrypt(data, key, iv)
-
 
     def ige256_decrypt(data: bytes, key: bytes, iv: bytes) -> bytes:
         return tgcrypto.ige256_decrypt(data, key, iv)
 
-
     def ctr256_encrypt(data: bytes, key: bytes, iv: bytearray, state: bytearray = None) -> bytes:
         return tgcrypto.ctr256_encrypt(data, key, iv, state or bytearray(1))
 
-
     def ctr256_decrypt(data: bytes, key: bytes, iv: bytearray, state: bytearray = None) -> bytes:
         return tgcrypto.ctr256_decrypt(data, key, iv, state or bytearray(1))
-
-
-    def xor(a: bytes, b: bytes) -> bytes:
-        return int.to_bytes(
-            int.from_bytes(a, "big") ^ int.from_bytes(b, "big"),
-            len(a),
-            "big",
-        )
 except ImportError:
-    import pyaes
-
     log.warning(
         "TgCrypto is missing! "
         "Hawkgram will work the same, but at a much slower speed."
     )
 
-
-    def ige256_encrypt(data: bytes, key: bytes, iv: bytes) -> bytes:
-        return ige(data, key, iv, True)
-
-
-    def ige256_decrypt(data: bytes, key: bytes, iv: bytes) -> bytes:
-        return ige(data, key, iv, False)
-
-
-    def ctr256_encrypt(data: bytes, key: bytes, iv: bytearray, state: bytearray = None) -> bytes:
-        return ctr(data, key, iv, state or bytearray(1))
-
-
-    def ctr256_decrypt(data: bytes, key: bytes, iv: bytearray, state: bytearray = None) -> bytes:
-        return ctr(data, key, iv, state or bytearray(1))
-
-
-    def xor(a: bytes, b: bytes) -> bytes:
-        return int.to_bytes(
-            int.from_bytes(a, "big") ^ int.from_bytes(b, "big"),
-            len(a),
-            "big",
-        )
-
-
-    def ige(data: bytes, key: bytes, iv: bytes, encrypt: bool) -> bytes:
-        cipher = pyaes.AES(key)
-
-        iv_1 = iv[:16]
-        iv_2 = iv[16:]
-
-        data = [data[i: i + 16] for i in range(0, len(data), 16)]
-
-        if encrypt:
-            for i, chunk in enumerate(data):
-                iv_1 = data[i] = xor(cipher.encrypt(xor(chunk, iv_1)), iv_2)
-                iv_2 = chunk
-        else:
-            for i, chunk in enumerate(data):
-                iv_2 = data[i] = xor(cipher.decrypt(xor(chunk, iv_2)), iv_1)
-                iv_1 = chunk
-
-        return b"".join(data)
-
-
-    def ctr(data: bytes, key: bytes, iv: bytearray, state: bytearray) -> bytes:
-        cipher = pyaes.AES(key)
-
-        out = bytearray(data)
-        chunk = cipher.encrypt(iv)
-
-        for i in range(0, len(data), 16):
-            for j in range(0, min(len(data) - i, 16)):
-                out[i + j] ^= chunk[state[0]]
-
-                state[0] += 1
-
-                if state[0] >= 16:
-                    state[0] = 0
-
-                if state[0] == 0:
-                    for k in range(15, -1, -1):
-                        try:
-                            iv[k] += 1
-                            break
-                        except ValueError:
-                            iv[k] = 0
-
-                    chunk = cipher.encrypt(iv)
-
-        return out
+    ige256_encrypt = _ige256_encrypt
+    ige256_decrypt = _ige256_decrypt
+    ctr256_encrypt = _ctr256_encrypt
+    ctr256_decrypt = _ctr256_decrypt
