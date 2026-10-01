@@ -52,6 +52,15 @@ Hawkgram keeps the `pyrogram` import name, so existing code keeps working unchan
 
 ### Changelog
 
+#### Hawkgram 1.0.6: messages with formatted dates
+
+- **Messages with a formatted date are no longer dropped.** `MessageEntityType` was missing `FORMATTED_DATE`, so
+  parsing any message that contained one raised `ValueError` and the update never reached a handler. The entity now
+  has its own type, exposes the shown point in time as `MessageEntity.date`, and keeps its display format when the
+  message is sent again.
+- **A message entity of an unknown type no longer makes the whole message unparsable.** Entity types added by a newer
+  API layer are parsed as `MessageEntityType.UNKNOWN`.
+
 #### Hawkgram 1.0.5: bounded unknown_errors.txt
 
 - **`unknown_errors.txt` no longer grows without limit.** When it reaches 1 MiB it is moved to

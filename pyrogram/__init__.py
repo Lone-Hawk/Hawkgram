@@ -19,7 +19,7 @@
 #  along with Hawkgram.  If not, see <http://www.gnu.org/licenses/>.
 
 __fork_name__ = "Hawkgram"
-__version__ = "1.0.5"
+__version__ = "1.0.6"
 __license__ = "GNU Lesser General Public License v3.0 (LGPL-3.0)"
 __copyright__ = "Copyright (C) 2026-present Lone Hawk <https://github.com/Lone-Hawk>"
 

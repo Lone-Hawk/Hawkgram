@@ -206,6 +206,39 @@ async def test_diff_replace_entity_write_keeps_old_text():
 
 
 @pytest.mark.asyncio
+async def test_formatted_date_entity_parse_and_write():
+    raw_entity = wire(T.MessageEntityFormattedDate(offset=3, length=8, date=1700000000, short_date=True, relative=True))
+    entity = types.MessageEntity._parse(None, raw_entity, {})
+
+    assert entity.type == enums.MessageEntityType.FORMATTED_DATE
+    assert entity.date == utils.timestamp_to_datetime(1700000000)
+    assert wire(await entity.write()) == raw_entity
+
+
+@pytest.mark.asyncio
+async def test_unknown_entity_type_falls_back_to_unknown():
+    class FutureEntity:
+        """An entity type from a layer newer than this library, carrying a field MessageEntityUnknown lacks."""
+        offset, length, url = 2, 4, "https://example.com"
+
+    entity = types.MessageEntity._parse(None, FutureEntity(), {})
+
+    assert entity.type == enums.MessageEntityType.UNKNOWN
+    assert await entity.write() == T.MessageEntityUnknown(offset=2, length=4)
+
+
+@pytest.mark.asyncio
+async def test_message_with_formatted_date_is_parsed(client):
+    message = await types.Message._parse(client, wire(T.Message(
+        id=1, peer_id=T.PeerChannel(channel_id=CHANNEL_RAW_ID), date=1, message="Meet at noon",
+        entities=[T.MessageEntityFormattedDate(offset=8, length=4, date=1700000000, short_time=True)],
+    )), {}, {CHANNEL_RAW_ID: raw_channel()})
+
+    assert message.text == "Meet at noon"
+    assert message.entities[0].type == enums.MessageEntityType.FORMATTED_DATE
+
+
+@pytest.mark.asyncio
 async def test_poll_new_fields_and_added_options():
     poll = T.Poll(id=1, question=text("Lunch?"), hash=0, open_answers=True, revoting_disabled=True,
                   shuffle_answers=True, subscribers_only=True, countries_iso2=["LK"], answers=[

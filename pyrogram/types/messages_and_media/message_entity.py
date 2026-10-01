@@ -18,12 +18,16 @@
 #  You should have received a copy of the GNU Lesser General Public License
 #  along with Hawkgram.  If not, see <http://www.gnu.org/licenses/>.
 
+from datetime import datetime
 from typing import Optional, Dict
 
 import pyrogram
-from pyrogram import raw, enums
+from pyrogram import raw, enums, utils
 from pyrogram import types
 from ..object import Object
+
+# Display flags of a formatted date, kept so the entity can be written back unchanged
+_DATE_FLAGS = ("relative", "short_time", "long_time", "short_date", "long_date", "day_of_week")
 
 
 class MessageEntity(Object):
@@ -59,6 +63,9 @@ class MessageEntity(Object):
 
         old_text (``str``, *optional*):
             For :obj:`~pyrogram.enums.MessageEntityType.DIFF_REPLACE` only, the text that was replaced.
+
+        date (:py:obj:`~datetime.datetime`, *optional*):
+            For :obj:`~pyrogram.enums.MessageEntityType.FORMATTED_DATE` only, the point in time that is shown.
     """
 
     def __init__(
@@ -73,7 +80,8 @@ class MessageEntity(Object):
         language: str = None,
         custom_emoji_id: int = None,
         collapsed: bool = None,
-        old_text: str = None
+        old_text: str = None,
+        date: datetime = None
     ):
         super().__init__(client)
 
@@ -86,6 +94,8 @@ class MessageEntity(Object):
         self.custom_emoji_id = custom_emoji_id
         self.collapsed = collapsed
         self.old_text = old_text
+        self.date = date
+        self._date_flags = {}
 
     @staticmethod
     def _parse(
@@ -99,10 +109,14 @@ class MessageEntity(Object):
             entity_type = enums.MessageEntityType.TEXT_MENTION
             user_id = entity.user_id.user_id
         else:
-            entity_type = enums.MessageEntityType(entity.__class__)
+            # An entity type added by a newer layer must not make the whole message unparsable
+            try:
+                entity_type = enums.MessageEntityType(entity.__class__)
+            except ValueError:
+                entity_type = enums.MessageEntityType.UNKNOWN
             user_id = getattr(entity, "user_id", None)
 
-        return MessageEntity(
+        parsed = MessageEntity(
             type=entity_type,
             offset=entity.offset,
             length=entity.length,
@@ -112,13 +126,23 @@ class MessageEntity(Object):
             custom_emoji_id=getattr(entity, "document_id", None),
             collapsed=getattr(entity, "collapsed", None),
             old_text=getattr(entity, "old_text", None),
+            date=utils.timestamp_to_datetime(getattr(entity, "date", None)),
             client=client
         )
 
+        if entity_type == enums.MessageEntityType.FORMATTED_DATE:
+            parsed._date_flags = {flag: getattr(entity, flag) for flag in _DATE_FLAGS if getattr(entity, flag)}
+
+        return parsed
+
     async def write(self):
+        # An unknown entity may still carry fields of the type it came from, which MessageEntityUnknown can't take
+        if self.type == enums.MessageEntityType.UNKNOWN:
+            return raw.types.MessageEntityUnknown(offset=self.offset, length=self.length)
+
         args = self.__dict__.copy()
 
-        for arg in ("_client", "type", "user"):
+        for arg in ("_client", "type", "user", "_date_flags"):
             args.pop(arg)
 
         if self.user:
@@ -142,6 +166,11 @@ class MessageEntity(Object):
 
         if self.type != enums.MessageEntityType.DIFF_REPLACE:
             args.pop("old_text")
+
+        args.pop("date")
+        if self.type == enums.MessageEntityType.FORMATTED_DATE:
+            args["date"] = utils.datetime_to_timestamp(self.date)
+            args.update(self._date_flags)
 
         entity = self.type.value
 

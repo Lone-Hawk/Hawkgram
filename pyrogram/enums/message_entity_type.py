@@ -85,6 +85,9 @@ class MessageEntityType(AutoName):
     CUSTOM_EMOJI = raw.types.MessageEntityCustomEmoji
     "Custom emoji"
 
+    FORMATTED_DATE = raw.types.MessageEntityFormattedDate
+    "Date shown in the reader's own time zone and format (see ``date``)"
+
     DIFF_INSERT = raw.types.MessageEntityDiffInsert
     "Text inserted by AI proofreading"
 
