@@ -20,7 +20,7 @@ config.sh
 *.session-journal
 config.ini
 main.py
-unknown_errors.txt
+unknown_errors.txt*
 .env
 .env.*
 

@@ -52,6 +52,14 @@ Hawkgram keeps the `pyrogram` import name, so existing code keeps working unchan
 
 ### Changelog
 
+#### Hawkgram 1.0.5: bounded unknown_errors.txt
+
+- **`unknown_errors.txt` no longer grows without limit.** When it reaches 1 MiB it is moved to
+  `unknown_errors.txt.1`, replacing the previous one, so the two files take about 2 MiB at most and the latest errors
+  are always kept.
+- **Unknown Telegram errors are no longer lost** when `unknown_errors.txt` can't be written, for example in a read-only
+  folder. The write failure used to replace the error itself; now the error is raised as usual.
+
 #### Hawkgram 1.0.4: current key exchange encryption
 
 - **The auth key exchange uses RSA_PAD**, Telegram's current scheme for encrypting the data sent to the server when a

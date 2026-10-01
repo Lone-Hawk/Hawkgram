@@ -32,7 +32,7 @@ import pytest
 import pyrogram
 from pyrogram import enums, raw, types, utils
 from pyrogram.crypto import aes, mtproto, prime, rsa
-from pyrogram.errors import SecurityCheckMismatch
+from pyrogram.errors import RPCError, SecurityCheckMismatch, UnknownError, rpc_error
 from pyrogram.file_id import FileId, FileType, FileUniqueId, FileUniqueType
 from pyrogram.parser.parser import Parser
 from pyrogram.raw.core import Bytes, Message, TLObject
@@ -229,6 +229,36 @@ def test_unknown_constructor_error_does_not_leak_content():
         mtproto.unpack(BytesIO(server_packet(b"\xef\xbe\xad\xde" + secret)), SESSION_ID, AUTH_KEY, AUTH_KEY_ID)
 
     assert str(error.value) == "The server sent an unknown constructor: 0xdeadbeef"
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# unknown_errors.txt
+# ---------------------------------------------------------------------------------------------------------------
+
+def raise_unknown_error():
+    with pytest.raises(UnknownError):
+        RPCError.raise_it(T.RpcError(error_code=999, error_message="SOMETHING_NEW"), raw.functions.help.GetConfig)
+
+
+def test_unknown_errors_file_size_is_limited(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(rpc_error, "UNKNOWN_ERRORS_MAX_SIZE", 1000)
+
+    for _ in range(200):  # about 14 KB of lines
+        raise_unknown_error()
+
+    current, previous = tmp_path / "unknown_errors.txt", tmp_path / "unknown_errors.txt.1"
+    assert previous.stat().st_size >= 1000
+    assert current.stat().st_size < 1000 + 100 and previous.stat().st_size < 1000 + 100
+    assert "SOMETHING_NEW" in current.read_text(encoding="utf-8")
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["unknown_errors.txt", "unknown_errors.txt.1"]
+
+
+def test_unwritable_unknown_errors_file_does_not_hide_the_error(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "unknown_errors.txt").mkdir()  # opening it for writing fails on every platform
+
+    raise_unknown_error()
 
 
 # ---------------------------------------------------------------------------------------------------------------

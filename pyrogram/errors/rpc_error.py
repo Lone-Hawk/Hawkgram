@@ -18,6 +18,8 @@
 #  You should have received a copy of the GNU Lesser General Public License
 #  along with Hawkgram.  If not, see <http://www.gnu.org/licenses/>.
 
+import logging
+import os
 import re
 from datetime import datetime
 from importlib import import_module
@@ -26,6 +28,28 @@ from typing import Type, Union
 from pyrogram import __version__, raw
 from pyrogram.raw.core import TLObject
 from .exceptions.all import exceptions
+
+log = logging.getLogger(__name__)
+
+UNKNOWN_ERRORS_FILE = "unknown_errors.txt"
+# When the file reaches this size it is moved to unknown_errors.txt.1, replacing the previous one,
+# so the two files never take more than about twice this much space
+UNKNOWN_ERRORS_MAX_SIZE = 1024 * 1024
+
+
+def log_unknown_error(value, rpc_name: str):
+    try:
+        try:
+            if os.path.getsize(UNKNOWN_ERRORS_FILE) >= UNKNOWN_ERRORS_MAX_SIZE:
+                os.replace(UNKNOWN_ERRORS_FILE, UNKNOWN_ERRORS_FILE + ".1")
+        except FileNotFoundError:
+            pass
+
+        with open(UNKNOWN_ERRORS_FILE, "a", encoding="utf-8") as f:
+            f.write(f"{datetime.now()}\t{value}\t{rpc_name}\n")
+    except OSError as e:
+        # Failing to record the error must not replace the error itself
+        log.debug("Unable to write to %s: %s", UNKNOWN_ERRORS_FILE, e)
 
 
 class RPCError(Exception):
@@ -56,8 +80,7 @@ class RPCError(Exception):
             self.value = value
 
         if is_unknown:
-            with open("unknown_errors.txt", "a", encoding="utf-8") as f:
-                f.write(f"{datetime.now()}\t{value}\t{rpc_name}\n")
+            log_unknown_error(value, rpc_name)
 
     @staticmethod
     def raise_it(rpc_error: "raw.types.RpcError", rpc_type: Type[TLObject]):
