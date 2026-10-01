@@ -52,7 +52,7 @@ Hawkgram keeps the `pyrogram` import name, so existing code keeps working unchan
 
 ### Changelog
 
-Changes compared to Pyrofork 2.3.69 (Telegram API layer 223).
+**Hawkgram 1.0.0**, the first release. Changes compared to Pyrofork 2.3.69 (Telegram API layer 223).
 
 #### Telegram API layer 229
 
