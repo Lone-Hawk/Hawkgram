@@ -52,6 +52,16 @@ Hawkgram keeps the `pyrogram` import name, so existing code keeps working unchan
 
 ### Changelog
 
+#### Hawkgram 1.0.3: current key exchange encryption
+
+- **The auth key exchange uses RSA_PAD**, Telegram's current scheme for encrypting the data sent to the server when a
+  new session key is created. The data is wrapped in AES-256-IGE under a random temporary key with a SHA-256 hash
+  before the RSA encryption, replacing the older RSA of a SHA-1 hash, the data and random padding.
+- The key exchange names the data center the key is created for (`p_q_inner_data_dc`), as Telegram's documentation
+  requires together with RSA_PAD.
+- Confirmed with a new login against Telegram's servers, together with the stricter key exchange checks from 1.0.1.
+  Existing sessions are not affected.
+
 #### Hawkgram 1.0.2: maintained dependencies
 
 - **`pyaes` replaced with `cryptography`.** When TgCrypto isn't installed, AES now runs in compiled code from the
