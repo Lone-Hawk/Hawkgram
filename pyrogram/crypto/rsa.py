@@ -18,7 +18,11 @@
 #  You should have received a copy of the GNU Lesser General Public License
 #  along with Hawkgram.  If not, see <http://www.gnu.org/licenses/>.
 
+import os
 from collections import namedtuple
+from hashlib import sha256
+
+from . import aes
 
 PublicKey = namedtuple("PublicKey", ["m", "e"])
 
@@ -259,3 +263,32 @@ def encrypt(data: bytes, fingerprint: int) -> bytes:
         server_public_keys[fingerprint].e,
         server_public_keys[fingerprint].m
     ).to_bytes(256, "big")
+
+
+def pad_and_encrypt(data: bytes, fingerprint: int) -> bytes:
+    """Encrypt the inner data of the auth key exchange with RSA_PAD.
+
+    https://core.telegram.org/mtproto/auth_key, section 4.1.
+    RSA_PAD wraps the data in AES-256-IGE under a random temporary key, with a SHA-256 hash for integrity,
+    before the RSA encryption, so the RSA input is never the raw data.
+    """
+    if len(data) > 144:
+        raise ValueError(f"The data to encrypt is too long: {len(data)} bytes, at most 144 are allowed")
+
+    modulus = server_public_keys[fingerprint].m
+
+    data_with_padding = data + os.urandom(192 - len(data))
+    data_pad_reversed = data_with_padding[::-1]
+
+    while True:
+        temp_key = os.urandom(32)
+
+        data_with_hash = data_pad_reversed + sha256(temp_key + data_with_padding).digest()
+        aes_encrypted = aes.ige256_encrypt(data_with_hash, temp_key, bytes(32))
+
+        temp_key_xor = bytes(a ^ b for a, b in zip(temp_key, sha256(aes_encrypted).digest()))
+        key_aes_encrypted = temp_key_xor + aes_encrypted
+
+        # The value must be smaller than the RSA modulus; otherwise a new temporary key is drawn
+        if int.from_bytes(key_aes_encrypted, "big") < modulus:
+            return encrypt(key_aes_encrypted, fingerprint)

@@ -307,6 +307,39 @@ def server_rsa_key():
             return n, e, pow(e, -1, phi)
 
 
+def rsa_pad_decrypt(encrypted_data: bytes, rsa_key) -> bytes:
+    """Undo RSA_PAD the way the server does, verifying its hash; returns the padded inner data."""
+    n, _, d = rsa_key
+    key_aes_encrypted = pow(int.from_bytes(encrypted_data, "big"), d, n).to_bytes(256, "big")
+    temp_key_xor, aes_encrypted = key_aes_encrypted[:32], key_aes_encrypted[32:]
+    temp_key = bytes(a ^ b for a, b in zip(temp_key_xor, sha256(aes_encrypted).digest()))
+
+    data_with_hash = aes.ige256_decrypt(aes_encrypted, temp_key, bytes(32))
+    data_with_padding = data_with_hash[:192][::-1]
+    assert data_with_hash[192:] == sha256(temp_key + data_with_padding).digest(), "RSA_PAD hash mismatch"
+
+    return data_with_padding
+
+
+@pytest.mark.parametrize("length", [0, 1, 100, 144])
+def test_rsa_pad_round_trip(server_rsa_key, monkeypatch, length):
+    monkeypatch.setattr(rsa, "server_public_keys", {1: rsa.PublicKey(server_rsa_key[0], server_rsa_key[1])})
+    data = os.urandom(length)
+
+    encrypted = rsa.pad_and_encrypt(data, 1)
+
+    assert len(encrypted) == 256
+    assert rsa_pad_decrypt(encrypted, server_rsa_key)[:length] == data
+    assert rsa.pad_and_encrypt(data, 1) != encrypted  # randomized: a new temporary key and padding every time
+
+
+def test_rsa_pad_rejects_oversized_data(server_rsa_key, monkeypatch):
+    monkeypatch.setattr(rsa, "server_public_keys", {1: rsa.PublicKey(server_rsa_key[0], server_rsa_key[1])})
+
+    with pytest.raises(ValueError):
+        rsa.pad_and_encrypt(bytes(145), 1)
+
+
 class FakeTelegramServer:
     """Plays the server side of https://core.telegram.org/mtproto/auth_key over a fake connection."""
 
@@ -341,9 +374,9 @@ class FakeTelegramServer:
                            server_public_key_fingerprints=[self.FINGERPRINT])
 
         if isinstance(request, raw.functions.ReqDHParams):
-            decrypted = pow(int.from_bytes(request.encrypted_data, "big"), self.d, self.n).to_bytes(255, "big")
-            inner = TLObject.read(BytesIO(decrypted[20:]))
-            assert decrypted[:20] == sha1(inner.write()).digest()
+            inner = TLObject.read(BytesIO(rsa_pad_decrypt(request.encrypted_data, (self.n, self.e, self.d))))
+            assert isinstance(inner, T.PQInnerDataDc)
+            self.inner_dc = inner.dc
 
             new_nonce = inner.new_nonce.to_bytes(32, "little", signed=True)
             server_nonce = self.server_nonce.to_bytes(16, "little", signed=True)
@@ -390,11 +423,11 @@ def fake_server_auth(server_rsa_key, monkeypatch):
                         {FakeTelegramServer.FINGERPRINT: rsa.PublicKey(server_rsa_key[0], server_rsa_key[1])})
     monkeypatch.setattr(Auth, "MAX_RETRIES", 0)
 
-    def make(mode):
+    def make(mode, test_mode=False):
         server = FakeTelegramServer(server_rsa_key, mode)
         client = SimpleNamespace(ipv6=False, alt_port=False, proxy=None, protocol_factory=None,
                                  connection_factory=lambda **kwargs: server)
-        return Auth(client, dc_id=2, test_mode=False), server
+        return Auth(client, dc_id=2, test_mode=test_mode), server
 
     return make
 
@@ -406,6 +439,16 @@ async def test_auth_key_exchange_succeeds(fake_server_auth):
     auth_key = await auth.create()
 
     assert len(auth_key) == 256 and auth_key == server.auth_key
+    assert server.inner_dc == 2
+
+
+@pytest.mark.asyncio
+async def test_auth_key_exchange_names_the_test_dc(fake_server_auth):
+    auth, server = fake_server_auth("ok", test_mode=True)
+
+    await auth.create()
+
+    assert server.inner_dc == 10002
 
 
 @pytest.mark.asyncio

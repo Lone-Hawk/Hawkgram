@@ -137,21 +137,21 @@ class Auth:
                 # https://core.telegram.org/mtproto/security_guidelines#checking-nonce-server-nonce-and-new-nonce-fields
                 SecurityCheckMismatch.check(nonce == res_pq.nonce, "nonce == res_pq.nonce")
 
-                data = raw.types.PQInnerData(
+                # p_q_inner_data_dc names the DC the key is created for: 10000 is added for the test servers.
+                # Auth always connects to a regular (non-media) DC, so the ID is never negative.
+                data = raw.types.PQInnerDataDc(
                     pq=res_pq.pq,
                     p=p.to_bytes(4, "big"),
                     q=q.to_bytes(4, "big"),
                     nonce=nonce,
                     server_nonce=server_nonce,
                     new_nonce=new_nonce,
+                    dc=self.dc_id + 10000 if self.test_mode else self.dc_id
                 ).write()
 
-                sha = sha1(data).digest()
-                padding = urandom(- (len(data) + len(sha)) % 255)
-                data_with_hash = sha + data + padding
-                encrypted_data = rsa.encrypt(data_with_hash, public_key_fingerprint)
+                encrypted_data = rsa.pad_and_encrypt(data, public_key_fingerprint)
 
-                log.debug("Done encrypt data with RSA")
+                log.debug("Done encrypt data with RSA_PAD")
 
                 # Step 5
                 log.debug("Send req_DH_params")
