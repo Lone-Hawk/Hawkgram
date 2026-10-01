@@ -342,7 +342,7 @@ def test_server_public_key_fingerprints_match_their_keys():
 
 def test_current_server_keys_are_known_and_preferred():
     # Telegram only accepts RSA_PAD data encrypted with its current keys, also listed by TDLib.
-    # Without them no new auth key can be created (Hawkgram 1.0.3).
+    # Without them no new auth key can be created.
     assert list(rsa.server_public_keys)[:2] == [
         -3414540481677951611,  # production
         -5595554452916591101,  # test servers
