@@ -73,9 +73,13 @@ class Auth:
     async def invoke(self, data: TLObject):
         data = self.pack(data)
         await self.connection.send(data)
-        response = BytesIO(await self.connection.recv())
+        response = await self.connection.recv()
 
-        return self.unpack(response)
+        # A 4-byte packet is a transport error code instead of an answer, e.g. -404 for rejected data
+        if response is not None and len(response) == 4:
+            raise ConnectionError(f"Server sent transport error: {Int.read(BytesIO(response))}")
+
+        return self.unpack(BytesIO(response))
 
     async def create(self):
         """
@@ -109,13 +113,13 @@ class Auth:
                 log.debug("Got ResPq: %s", res_pq.server_nonce)
                 log.debug("Server public key fingerprints: %s", res_pq.server_public_key_fingerprints)
 
-                for i in res_pq.server_public_key_fingerprints:
-                    if i in rsa.server_public_keys:
+                # Keys are tried in the order of rsa.server_public_keys, so the current main key is preferred:
+                # the server rejects RSA_PAD data encrypted with the older keys it still lists.
+                for i in rsa.server_public_keys:
+                    if i in res_pq.server_public_key_fingerprints:
                         log.debug("Using fingerprint: %s", i)
                         public_key_fingerprint = i
                         break
-                    else:
-                        log.debug("Fingerprint unknown: %s", i)
                 else:
                     raise Exception("Public key not found")
 

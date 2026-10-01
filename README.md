@@ -52,6 +52,18 @@ Hawkgram keeps the `pyrogram` import name, so existing code keeps working unchan
 
 ### Changelog
 
+#### Hawkgram 1.0.4: new sessions work again
+
+- **Fixed: Hawkgram 1.0.3 couldn't create new sessions.** Logging in with a new session, or connecting to a data
+  center for the first time, failed with `KeyError: 0`. Telegram only accepts RSA_PAD with its current server keys,
+  which were missing, so the server rejected the key exchange. Telegram's current production and test server keys
+  are now included and always preferred. Sessions created with earlier versions were not affected.
+- Test mode (`test_mode=True`) can create sessions again; the test servers' key was missing as well.
+- When Telegram rejects the key exchange, the error now names the server's error code instead of `KeyError: 0`.
+- Verified by creating new session keys on all five production data centers and on the test servers.
+
+Update with `pip install -U hawkgram`. Don't use 1.0.3.
+
 #### Hawkgram 1.0.3: current key exchange encryption
 
 - **The auth key exchange uses RSA_PAD**, Telegram's current scheme for encrypting the data sent to the server when a
@@ -59,8 +71,7 @@ Hawkgram keeps the `pyrogram` import name, so existing code keeps working unchan
   before the RSA encryption, replacing the older RSA of a SHA-1 hash, the data and random padding.
 - The key exchange names the data center the key is created for (`p_q_inner_data_dc`), as Telegram's documentation
   requires together with RSA_PAD.
-- Confirmed with a new login against Telegram's servers, together with the stricter key exchange checks from 1.0.1.
-  Existing sessions are not affected.
+- Existing sessions are not affected. New sessions don't work in this version; see 1.0.4.
 
 #### Hawkgram 1.0.2: maintained dependencies
 

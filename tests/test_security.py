@@ -35,7 +35,7 @@ from pyrogram.crypto import aes, mtproto, prime, rsa
 from pyrogram.errors import SecurityCheckMismatch
 from pyrogram.file_id import FileId, FileType, FileUniqueId, FileUniqueType
 from pyrogram.parser.parser import Parser
-from pyrogram.raw.core import Message, TLObject
+from pyrogram.raw.core import Bytes, Message, TLObject
 from pyrogram.session.auth import Auth
 from pyrogram.storage import FileStorage
 
@@ -333,6 +333,22 @@ def test_rsa_pad_round_trip(server_rsa_key, monkeypatch, length):
     assert rsa.pad_and_encrypt(data, 1) != encrypted  # randomized: a new temporary key and padding every time
 
 
+def test_server_public_key_fingerprints_match_their_keys():
+    # https://core.telegram.org/mtproto/auth_key: the lower 64 bits of SHA1(n, e) serialized as TL bytes
+    for fingerprint, key in rsa.server_public_keys.items():
+        serialized = Bytes(key.m.to_bytes(256, "big")) + Bytes(key.e.to_bytes(3, "big"))
+        assert int.from_bytes(sha1(serialized).digest()[-8:], "little", signed=True) == fingerprint
+
+
+def test_current_server_keys_are_known_and_preferred():
+    # Telegram only accepts RSA_PAD data encrypted with its current keys, also listed by TDLib.
+    # Without them no new auth key can be created (Hawkgram 1.0.3).
+    assert list(rsa.server_public_keys)[:2] == [
+        -3414540481677951611,  # production
+        -5595554452916591101,  # test servers
+    ]
+
+
 def test_rsa_pad_rejects_oversized_data(server_rsa_key, monkeypatch):
     monkeypatch.setattr(rsa, "server_public_keys", {1: rsa.PublicKey(server_rsa_key[0], server_rsa_key[1])})
 
@@ -344,6 +360,7 @@ class FakeTelegramServer:
     """Plays the server side of https://core.telegram.org/mtproto/auth_key over a fake connection."""
 
     FINGERPRINT = 1234567890
+    OLD_FINGERPRINT = 987654321
 
     def __init__(self, rsa_key, mode="ok"):
         self.n, self.e, self.d = rsa_key
@@ -362,6 +379,9 @@ class FakeTelegramServer:
         self.received.append(TLObject.read(BytesIO(packet[20:])))
 
     async def recv(self) -> bytes:
+        if self.mode == "transport_error" and isinstance(self.received[-1], raw.functions.ReqDHParams):
+            return (-404).to_bytes(4, "little", signed=True)
+
         return bytes(20) + self.respond(self.received[-1]).write()
 
     def respond(self, request):
@@ -369,9 +389,11 @@ class FakeTelegramServer:
             self.nonce = request.nonce
             self.server_nonce = int.from_bytes(os.urandom(16), "little", signed=True)
             pq = 2 ** 70 + 1 if self.mode == "huge_pq" else _random_prime(31) * _random_prime(31)
+            # Like Telegram, which also lists older keys that it no longer accepts for RSA_PAD
+            fingerprints = [self.OLD_FINGERPRINT, self.FINGERPRINT] if self.mode == "old_key_first" else [self.FINGERPRINT]
             return T.ResPQ(nonce=self.nonce, server_nonce=self.server_nonce,
                            pq=pq.to_bytes((pq.bit_length() + 7) // 8, "big"),
-                           server_public_key_fingerprints=[self.FINGERPRINT])
+                           server_public_key_fingerprints=fingerprints)
 
         if isinstance(request, raw.functions.ReqDHParams):
             inner = TLObject.read(BytesIO(rsa_pad_decrypt(request.encrypted_data, (self.n, self.e, self.d))))
@@ -419,8 +441,11 @@ class FakeTelegramServer:
 
 @pytest.fixture
 def fake_server_auth(server_rsa_key, monkeypatch):
-    monkeypatch.setattr(rsa, "server_public_keys",
-                        {FakeTelegramServer.FINGERPRINT: rsa.PublicKey(server_rsa_key[0], server_rsa_key[1])})
+    monkeypatch.setattr(rsa, "server_public_keys", {
+        FakeTelegramServer.FINGERPRINT: rsa.PublicKey(server_rsa_key[0], server_rsa_key[1]),
+        # A key the client also knows but the server can't decrypt with, like Telegram's older keys
+        FakeTelegramServer.OLD_FINGERPRINT: rsa.PublicKey(_random_prime(1024) * _random_prime(1024), 65537),
+    })
     monkeypatch.setattr(Auth, "MAX_RETRIES", 0)
 
     def make(mode, test_mode=False):
@@ -440,6 +465,25 @@ async def test_auth_key_exchange_succeeds(fake_server_auth):
 
     assert len(auth_key) == 256 and auth_key == server.auth_key
     assert server.inner_dc == 2
+
+
+@pytest.mark.asyncio
+async def test_auth_key_exchange_prefers_the_current_key(fake_server_auth):
+    # The server lists an older key first; the client must still use the current one
+    auth, server = fake_server_auth("old_key_first")
+
+    auth_key = await auth.create()
+
+    assert auth_key == server.auth_key
+    assert server.received[1].public_key_fingerprint == FakeTelegramServer.FINGERPRINT
+
+
+@pytest.mark.asyncio
+async def test_auth_key_exchange_reports_transport_errors(fake_server_auth):
+    auth, _ = fake_server_auth("transport_error")
+
+    with pytest.raises(ConnectionError, match="-404"):
+        await auth.create()
 
 
 @pytest.mark.asyncio
