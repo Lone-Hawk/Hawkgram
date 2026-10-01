@@ -120,16 +120,22 @@ class Auth:
                     raise Exception("Public key not found")
 
                 # Step 3
+                # pq is a product of two 32-bit primes; anything bigger would make the factorization run forever
                 pq = int.from_bytes(res_pq.pq, "big")
+                SecurityCheckMismatch.check(1 < pq < 2 ** 64, "1 < pq < 2 ** 64")
                 log.debug("Start PQ factorization: %s", pq)
                 start = time.time()
                 g = prime.decompose(pq)
                 p, q = sorted((g, pq // g))  # p < q
+                SecurityCheckMismatch.check(1 < p and p * q == pq, "1 < p and p * q == pq")
                 log.debug("Done PQ factorization (%ss): %s %s", round(time.time() - start, 3), p, q)
 
                 # Step 4
                 server_nonce = res_pq.server_nonce
                 new_nonce = int.from_bytes(urandom(32), "little", signed=True)
+
+                # https://core.telegram.org/mtproto/security_guidelines#checking-nonce-server-nonce-and-new-nonce-fields
+                SecurityCheckMismatch.check(nonce == res_pq.nonce, "nonce == res_pq.nonce")
 
                 data = raw.types.PQInnerData(
                     pq=res_pq.pq,
@@ -147,7 +153,7 @@ class Auth:
 
                 log.debug("Done encrypt data with RSA")
 
-                # Step 5. TODO: Handle "server_DH_params_fail". Code assumes response is ok
+                # Step 5
                 log.debug("Send req_DH_params")
                 server_dh_params = await self.invoke(
                     raw.functions.ReqDHParams(
@@ -158,6 +164,16 @@ class Auth:
                         public_key_fingerprint=public_key_fingerprint,
                         encrypted_data=encrypted_data
                     )
+                )
+
+                SecurityCheckMismatch.check(
+                    isinstance(server_dh_params, raw.types.ServerDHParamsOk),
+                    "isinstance(server_dh_params, raw.types.ServerDHParamsOk)"
+                )
+                SecurityCheckMismatch.check(nonce == server_dh_params.nonce, "nonce == server_dh_params.nonce")
+                SecurityCheckMismatch.check(
+                    server_nonce == server_dh_params.server_nonce,
+                    "server_nonce == server_dh_params.server_nonce"
                 )
 
                 encrypted_answer = server_dh_params.encrypted_answer
@@ -184,15 +200,56 @@ class Auth:
 
                 log.debug("Done decrypting answer")
 
+                #######################
+                # Security checks, all done before anything is computed from or sent based on the answer
+                #######################
+
+                # https://core.telegram.org/mtproto/security_guidelines#checking-sha1-hash-values
+                answer = server_dh_inner_data.write()  # Call .write() to remove padding
+                SecurityCheckMismatch.check(
+                    answer_with_hash[:20] == sha1(answer).digest(),
+                    "answer_with_hash[:20] == sha1(answer).digest()"
+                )
+                log.debug("SHA1 hash values check: OK")
+
+                SecurityCheckMismatch.check(
+                    isinstance(server_dh_inner_data, raw.types.ServerDHInnerData),
+                    "isinstance(server_dh_inner_data, raw.types.ServerDHInnerData)"
+                )
+                SecurityCheckMismatch.check(nonce == server_dh_inner_data.nonce, "nonce == server_dh_inner_data.nonce")
+                SecurityCheckMismatch.check(
+                    server_nonce == server_dh_inner_data.server_nonce,
+                    "server_nonce == server_dh_inner_data.server_nonce"
+                )
+
                 dh_prime = int.from_bytes(server_dh_inner_data.dh_prime, "big")
+                SecurityCheckMismatch.check(dh_prime == prime.CURRENT_DH_PRIME, "dh_prime == prime.CURRENT_DH_PRIME")
+                log.debug("DH parameters check: OK")
+
+                # https://core.telegram.org/mtproto/security_guidelines#g-a-and-g-b-validation
+                g = server_dh_inner_data.g
+                g_a = int.from_bytes(server_dh_inner_data.g_a, "big")
+                SecurityCheckMismatch.check(1 < g < dh_prime - 1, "1 < g < dh_prime - 1")
+                SecurityCheckMismatch.check(1 < g_a < dh_prime - 1, "1 < g_a < dh_prime - 1")
+                SecurityCheckMismatch.check(
+                    2 ** (2048 - 64) < g_a < dh_prime - 2 ** (2048 - 64),
+                    "2 ** (2048 - 64) < g_a < dh_prime - 2 ** (2048 - 64)"
+                )
+
                 delta_time = server_dh_inner_data.server_time - time.time()
 
                 log.debug("Delta time: %s", round(delta_time, 3))
 
                 # Step 6
-                g = server_dh_inner_data.g
                 b = int.from_bytes(urandom(256), "big")
-                g_b = pow(g, b, dh_prime).to_bytes(256, "big")
+                g_b = pow(g, b, dh_prime)
+
+                SecurityCheckMismatch.check(1 < g_b < dh_prime - 1, "1 < g_b < dh_prime - 1")
+                SecurityCheckMismatch.check(
+                    2 ** (2048 - 64) < g_b < dh_prime - 2 ** (2048 - 64),
+                    "2 ** (2048 - 64) < g_b < dh_prime - 2 ** (2048 - 64)"
+                )
+                log.debug("g_a and g_b validation: OK")
 
                 retry_id = 0
 
@@ -200,7 +257,7 @@ class Auth:
                     nonce=nonce,
                     server_nonce=server_nonce,
                     retry_id=retry_id,
-                    g_b=g_b
+                    g_b=g_b.to_bytes(256, "big")
                 ).write()
 
                 sha = sha1(data).digest()
@@ -217,56 +274,14 @@ class Auth:
                     )
                 )
 
-                # TODO: Handle "auth_key_aux_hash" if the previous step fails
-
                 # Step 7; Step 8
-                g_a = int.from_bytes(server_dh_inner_data.g_a, "big")
                 auth_key = pow(g_a, b, dh_prime).to_bytes(256, "big")
-                server_nonce = server_nonce.to_bytes(16, "little", signed=True)
 
-                # TODO: Handle errors
-
-                #######################
-                # Security checks
-                #######################
-
-                SecurityCheckMismatch.check(dh_prime == prime.CURRENT_DH_PRIME, "dh_prime == prime.CURRENT_DH_PRIME")
-                log.debug("DH parameters check: OK")
-
-                # https://core.telegram.org/mtproto/security_guidelines#g-a-and-g-b-validation
-                g_b = int.from_bytes(g_b, "big")
-                SecurityCheckMismatch.check(1 < g < dh_prime - 1, "1 < g < dh_prime - 1")
-                SecurityCheckMismatch.check(1 < g_a < dh_prime - 1, "1 < g_a < dh_prime - 1")
-                SecurityCheckMismatch.check(1 < g_b < dh_prime - 1, "1 < g_b < dh_prime - 1")
+                # The server must confirm the key: dh_gen_retry and dh_gen_fail mean the key can't be used
                 SecurityCheckMismatch.check(
-                    2 ** (2048 - 64) < g_a < dh_prime - 2 ** (2048 - 64),
-                    "2 ** (2048 - 64) < g_a < dh_prime - 2 ** (2048 - 64)"
+                    isinstance(set_client_dh_params_answer, raw.types.DhGenOk),
+                    "isinstance(set_client_dh_params_answer, raw.types.DhGenOk)"
                 )
-                SecurityCheckMismatch.check(
-                    2 ** (2048 - 64) < g_b < dh_prime - 2 ** (2048 - 64),
-                    "2 ** (2048 - 64) < g_b < dh_prime - 2 ** (2048 - 64)"
-                )
-                log.debug("g_a and g_b validation: OK")
-
-                # https://core.telegram.org/mtproto/security_guidelines#checking-sha1-hash-values
-                answer = server_dh_inner_data.write()  # Call .write() to remove padding
-                SecurityCheckMismatch.check(
-                    answer_with_hash[:20] == sha1(answer).digest(),
-                    "answer_with_hash[:20] == sha1(answer).digest()"
-                )
-                log.debug("SHA1 hash values check: OK")
-
-                # https://core.telegram.org/mtproto/security_guidelines#checking-nonce-server-nonce-and-new-nonce-fields
-                # 1st message
-                SecurityCheckMismatch.check(nonce == res_pq.nonce, "nonce == res_pq.nonce")
-                # 2nd message
-                server_nonce = int.from_bytes(server_nonce, "little", signed=True)
-                SecurityCheckMismatch.check(nonce == server_dh_params.nonce, "nonce == server_dh_params.nonce")
-                SecurityCheckMismatch.check(
-                    server_nonce == server_dh_params.server_nonce,
-                    "server_nonce == server_dh_params.server_nonce"
-                )
-                # 3rd message
                 SecurityCheckMismatch.check(
                     nonce == set_client_dh_params_answer.nonce,
                     "nonce == set_client_dh_params_answer.nonce"
@@ -275,6 +290,18 @@ class Auth:
                     server_nonce == set_client_dh_params_answer.server_nonce,
                     "server_nonce == set_client_dh_params_answer.server_nonce"
                 )
+
+                # https://core.telegram.org/mtproto/auth_key#dh-key-exchange-complete
+                # new_nonce_hash1 = lower 128 bits of SHA1(new_nonce + 1 + auth_key_aux_hash)
+                auth_key_aux_hash = sha1(auth_key).digest()[:8]
+                new_nonce_hash1 = int.from_bytes(
+                    sha1(new_nonce + b"\x01" + auth_key_aux_hash).digest()[4:20], "little", signed=True
+                )
+                SecurityCheckMismatch.check(
+                    new_nonce_hash1 == set_client_dh_params_answer.new_nonce_hash1,
+                    "new_nonce_hash1 == set_client_dh_params_answer.new_nonce_hash1"
+                )
+
                 server_nonce = server_nonce.to_bytes(16, "little", signed=True)
                 log.debug("Nonce fields check: OK")
 

@@ -52,7 +52,9 @@ MARKDOWN_RE = re.compile(r"({d})".format(
             ]
         ]]
     )))
-URL_RE = re.compile(r"(!?)\[(.+?)\]\((.+?)\)")
+# The link text can't contain "]" and the URL can't contain ")" or whitespace. Besides matching the Markdown
+# syntax, this keeps matching linear per position: ".+?" here made texts like "[a](" * n take cubic time.
+URL_RE = re.compile(r"(!?)\[([^\]]+)\]\(([^)\s]+)\)")
 
 OPENING_TAG = "<{}>"
 CLOSING_TAG = "</{}>"

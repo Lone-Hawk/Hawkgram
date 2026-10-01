@@ -200,6 +200,10 @@ class Session:
                 self.auth_key,
                 self.auth_key_id
             )
+        except SecurityCheckMismatch as e:
+            # The packet failed an integrity or consistency check: discard it without trusting any of its content
+            log.warning("Discarding packet that failed a security check: %s", e)
+            return
         except ValueError as e:
             log.debug(e)
             self.loop.create_task(self.restart())
@@ -211,7 +215,8 @@ class Session:
             else [data]
         )
 
-        log.debug("Received: %s", data)
+        # Only the types are logged: contents include private messages, login codes and other secrets
+        log.debug("Received: %s", ", ".join(type(m.body).__name__ for m in messages))
 
         for msg in messages:
             if msg.seq_no % 2 != 0:
@@ -231,15 +236,17 @@ class Session:
                     if msg.msg_id in self.stored_msg_ids:
                         raise SecurityCheckMismatch("The msg_id is equal to any of the stored values")
 
-                    time_diff = (msg.msg_id - MsgId()) / 2 ** 32
+                # The time window applies to every message, including the first one after (re)connecting
+                # https://core.telegram.org/mtproto/security_guidelines#checking-msg-id
+                time_diff = (msg.msg_id - MsgId()) / 2 ** 32
 
-                    if time_diff > 30:
-                        raise SecurityCheckMismatch("The msg_id belongs to over 30 seconds in the future. "
-                                                    "Most likely the client time has to be synchronized.")
+                if time_diff > 30:
+                    raise SecurityCheckMismatch("The msg_id belongs to over 30 seconds in the future. "
+                                                "Most likely the client time has to be synchronized.")
 
-                    if time_diff < -300:
-                        raise SecurityCheckMismatch("The msg_id belongs to over 300 seconds in the past. "
-                                                    "Most likely the client time has to be synchronized.")
+                if time_diff < -300:
+                    raise SecurityCheckMismatch("The msg_id belongs to over 300 seconds in the past. "
+                                                "Most likely the client time has to be synchronized.")
             except SecurityCheckMismatch as e:
                 log.info("Discarding packet: %s", e)
                 await self.connection.close()
@@ -342,7 +349,8 @@ class Session:
         if wait_response:
             self.results[msg_id] = Result()
 
-        log.debug("Sent: %s", message)
+        # Only the type is logged: requests can carry bot tokens, login codes and password proofs
+        log.debug("Sent: %s (msg_id %s)", type(data).__name__, msg_id)
 
         payload = await self.loop.run_in_executor(
             pyrogram.crypto_executor,

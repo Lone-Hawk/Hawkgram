@@ -24,7 +24,7 @@ from datetime import datetime
 from typing import Union, Optional, Callable, BinaryIO
 
 import pyrogram
-from pyrogram import types
+from pyrogram import types, utils
 from pyrogram.file_id import FileId, FileType, PHOTO_TYPES
 
 DEFAULT_DOWNLOAD_DIR = "downloads/"
@@ -151,16 +151,8 @@ class DownloadMedia:
         directory, file_name = os.path.split(file_name)
         file_name = file_name or media_file_name or ""
 
-        # Sanitize file name
-        # CWE-22: Path Traversal
-        if file_name:
-            # Remove any path components, keeping only the basename
-            file_name = os.path.basename(file_name)
-            # Remove null bytes which could cause issues
-            file_name = file_name.replace('\x00', '')
-            # Handle edge cases
-            if not file_name or file_name in ('.', '..'):
-                file_name = ""
+        # The name may come from another user (the document's file name), so it must never contain directories
+        file_name = utils.sanitize_file_name(file_name)
 
         if not os.path.isabs(file_name):
             directory = self.PARENT_DIR / (directory or DEFAULT_DOWNLOAD_DIR)

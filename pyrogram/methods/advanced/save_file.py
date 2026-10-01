@@ -24,6 +24,7 @@ import inspect
 import io
 import logging
 import math
+import os
 from hashlib import md5
 from pathlib import PurePath
 from typing import Union, BinaryIO, Callable
@@ -36,7 +37,28 @@ from pyrogram.session import Session
 log = logging.getLogger(__name__)
 
 
+SESSION_FILE_SUFFIXES = (".session", ".session-journal", ".session-wal", ".session-shm")
+
+
 class SaveFile:
+    def _check_uploadable_path(self: "pyrogram.Client", path: Union[str, PurePath]):
+        """Refuse to upload session files given as a path.
+
+        Methods like send_document() treat a string that names an existing local file as a file to upload.
+        A bot that passes user input to them could be asked for its own session file, which grants full access to
+        the account. Session files can still be sent deliberately by passing an opened file object.
+        """
+        resolved = os.path.realpath(path)
+        own_database = getattr(self.storage, "database", None)
+
+        if resolved.lower().endswith(SESSION_FILE_SUFFIXES) or (
+            own_database is not None and resolved == os.path.realpath(own_database)
+        ):
+            raise ValueError(
+                "Refusing to upload a session file given as a path, since it grants full access to the account. "
+                "Pass an opened file object to send it deliberately."
+            )
+
     async def save_file(
         self: "pyrogram.Client",
         path: Union[str, BinaryIO],
@@ -114,6 +136,7 @@ class SaveFile:
             part_size = 512 * 1024
 
             if isinstance(path, (str, PurePath)):
+                self._check_uploadable_path(path)
                 fp = open(path, "rb")
             elif isinstance(path, io.IOBase):
                 fp = path

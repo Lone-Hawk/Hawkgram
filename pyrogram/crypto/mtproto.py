@@ -18,6 +18,7 @@
 #  You should have received a copy of the GNU Lesser General Public License
 #  along with Hawkgram.  If not, see <http://www.gnu.org/licenses/>.
 
+import hmac
 from hashlib import sha256
 from io import BytesIO
 from os import urandom
@@ -61,8 +62,26 @@ def unpack(
     SecurityCheckMismatch.check(b.read(8) == auth_key_id, "b.read(8) == auth_key_id")
 
     msg_key = b.read(16)
+    encrypted_data = b.read()
+
+    # AES-IGE works on whole 16-byte blocks; anything else can't be a valid message
+    SecurityCheckMismatch.check(
+        len(encrypted_data) > 0 and len(encrypted_data) % 16 == 0,
+        "len(encrypted_data) > 0 and len(encrypted_data) % 16 == 0"
+    )
+
     aes_key, aes_iv = kdf(auth_key, msg_key, False)
-    data = BytesIO(aes.ige256_decrypt(b.read(), aes_key, aes_iv))
+    decrypted_data = aes.ige256_decrypt(encrypted_data, aes_key, aes_iv)
+
+    # The integrity of the message is verified before any of its content is parsed or used
+    # https://core.telegram.org/mtproto/security_guidelines#checking-sha256-hash-value-of-msg-key
+    # 96 = 88 + 8 (incoming message)
+    SecurityCheckMismatch.check(
+        hmac.compare_digest(msg_key, sha256(auth_key[96:96 + 32] + decrypted_data).digest()[8:24]),
+        "msg_key == sha256(auth_key[96:96 + 32] + decrypted_data).digest()[8:24]"
+    )
+
+    data = BytesIO(decrypted_data)
     data.read(8)  # Salt
 
     # https://core.telegram.org/mtproto/security_guidelines#checking-session-id
@@ -74,20 +93,8 @@ def unpack(
         if e.args[0] == 0:
             raise ConnectionError("Received empty data. Check your internet connection.")
 
-        left = data.read().hex()
-
-        left = [left[i:i + 64] for i in range(0, len(left), 64)]
-        left = [[left[i:i + 8] for i in range(0, len(left), 8)] for left in left]
-        left = "\n".join(" ".join(x for x in left) for left in left)
-
-        raise ValueError(f"The server sent an unknown constructor: {hex(e.args[0])}\n{left}")
-
-    # https://core.telegram.org/mtproto/security_guidelines#checking-sha256-hash-value-of-msg-key
-    # 96 = 88 + 8 (incoming message)
-    SecurityCheckMismatch.check(
-        msg_key == sha256(auth_key[96:96 + 32] + data.getvalue()).digest()[8:24],
-        "msg_key == sha256(auth_key[96:96 + 32] + data.getvalue()).digest()[8:24]"
-    )
+        # Only the constructor is reported: the message content is private data and must not end up in logs
+        raise ValueError(f"The server sent an unknown constructor: {hex(e.args[0])}")
 
     # https://core.telegram.org/mtproto/security_guidelines#checking-message-length
     data.seek(32)  # Get to the payload, skip salt (8) + session_id (8) + msg_id (8) + seq_no (4) + length (4)

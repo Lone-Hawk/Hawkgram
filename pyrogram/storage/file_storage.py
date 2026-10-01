@@ -71,9 +71,29 @@ class FileStorage(SQLiteStorage):
 
         self.version(version)
 
+    @staticmethod
+    def _restrict_permissions(path: Path, file_exists: bool):
+        """Make the session file readable and writable by its owner only.
+
+        The session file contains the authorization key, which grants full access to the account.
+        SQLite creates its journal files with the same permissions as the database.
+        """
+        if os.name == "nt":
+            return
+
+        if not file_exists:
+            # Create the file with owner-only permissions before SQLite opens it
+            os.close(os.open(path, os.O_CREAT | os.O_WRONLY, 0o600))
+        elif path.stat().st_mode & 0o077:
+            log.warning("Restricting permissions of %s, which other users could read", path)
+
+        os.chmod(path, 0o600)
+
     async def open(self):
         path = self.database
         file_exists = path.is_file()
+
+        self._restrict_permissions(path, file_exists)
 
         self.conn = sqlite3.connect(str(path), timeout=1, check_same_thread=False)
 

@@ -34,6 +34,8 @@ from types import SimpleNamespace
 import pyrogram
 from pyrogram import raw, enums, types
 from pyrogram.types.messages_and_media.message import Str
+from pyrogram.crypto.prime import CURRENT_DH_PRIME
+from pyrogram.errors import SecurityCheckMismatch
 from pyrogram.file_id import FileId, FileType, PHOTO_TYPES, DOCUMENT_TYPES
 
 
@@ -334,6 +336,32 @@ async def parse_poll_from_updates(client: "pyrogram.Client", updates: "raw.base.
     return None
 
 
+def sanitize_file_name(file_name: str) -> str:
+    """Reduce a file name to a single, safe path component (CWE-22: Path Traversal).
+
+    File names chosen by other users must never contain directories. Both "/" and "\\" are treated as path
+    separators on every platform, since "\\" is a regular character on Linux and macOS but a separator on Windows.
+    Returns an empty string if nothing usable is left.
+    """
+    if not file_name:
+        return ""
+
+    # Keep only the last path component, splitting on both kinds of separator
+    file_name = re.split(r"[\\/]", file_name)[-1]
+
+    # Remove null bytes and other control characters
+    file_name = "".join(c for c in file_name if c >= " " and c != "\x7f")
+
+    if os.name == "nt":
+        # A colon would write to an NTFS alternate data stream
+        file_name = file_name.replace(":", "_")
+
+    if file_name.strip() in ("", ".", ".."):
+        return ""
+
+    return file_name
+
+
 def get_input_channel(peer: "raw.base.InputPeer") -> "raw.types.InputChannel":
     """Convert a resolved channel peer (as returned by resolve_peer) into an InputChannel"""
     if isinstance(peer, raw.types.InputPeerChannel):
@@ -436,6 +464,17 @@ def compute_password_check(
     B_bytes = r.srp_B
     B = btoi(B_bytes)
 
+    # https://core.telegram.org/api/srp: the server's parameters must be checked before they are used, otherwise
+    # weak parameters could make the password recoverable from the proof. Only Telegram's known safe 2048-bit prime
+    # with a generator that is valid for it is accepted, and B must be in the safe range.
+    if p != CURRENT_DH_PRIME or g not in (3, 4, 5, 7):
+        raise SecurityCheckMismatch("Unknown 2FA (SRP) parameters received from the server")
+
+    safety_margin = 2 ** (2048 - 64)
+
+    if not safety_margin < B < p - safety_margin:
+        raise SecurityCheckMismatch("Invalid 2FA (SRP) B value received from the server")
+
     srp_id = r.srp_id
 
     x_bytes = compute_password_hash(algo, password)
@@ -453,6 +492,11 @@ def compute_password_check(
         a = btoi(a_bytes)
 
         A = pow(g, a, p)
+
+        # Regenerate A if it falls outside the safe range
+        if not safety_margin < A < p - safety_margin:
+            continue
+
         A_bytes = itob(A)
 
         u = btoi(sha256(A_bytes + B_bytes))

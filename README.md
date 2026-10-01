@@ -52,6 +52,25 @@ Hawkgram keeps the `pyrogram` import name, so existing code keeps working unchan
 
 ### Changelog
 
+#### Hawkgram 1.0.1: security fixes
+
+All the issues below were inherited from Pyrofork. Updating is strongly recommended, especially on Linux and macOS.
+
+- **Downloads could write files anywhere (Linux and macOS).** A document whose file name contained backslashes
+  could be saved outside the download folder, overwriting any file the program can write. File names from other
+  users are now reduced to a single component, and downloads can never leave their target folder.
+- **Messages could freeze the client.** A crafted 4096-character text took about 8 seconds to parse as Markdown,
+  blocking all handlers; it now takes milliseconds.
+- **Session files were readable by other users of the computer (Linux and macOS).** They are now created, and
+  tightened if needed, with owner-only permissions.
+- **Session files are never uploaded by path**, so a bot passing user input to `send_document` and similar methods
+  can't be tricked into sending its own session.
+- **Stricter protocol checks:** the integrity of incoming messages is verified before they are parsed, the auth key
+  exchange validates the server's answer before sending anything and requires the server's key confirmation, 2FA
+  only accepts Telegram's known safe parameters, and every incoming message is checked against the clock.
+- **Logs no longer contain secrets:** debug logs record request and response types instead of their contents.
+- Hardened CI: pinned actions, read-only permissions, and building separated from publishing.
+
 **Hawkgram 1.0.0**, the first release. Changes compared to Pyrofork 2.3.69 (Telegram API layer 223).
 
 #### Telegram API layer 229
