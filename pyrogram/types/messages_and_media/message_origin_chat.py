@@ -1,7 +1,7 @@
 #  Hawkgram - Telegram MTProto API Client Library for Python
 #  Copyright (C) 2017-present <https://github.com/TelegramPlayGround>
 #  Copyright (C) 2022-present Mayuri-Chan <https://github.com/Mayuri-Chan>
-#  Copyright (C) 2026-present Lone Hawk
+#  Copyright (C) 2026-present Lone Hawk <https://github.com/Lone-Hawk>
 #
 #  This file is part of Hawkgram.
 #

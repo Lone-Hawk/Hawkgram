@@ -1,5 +1,5 @@
 #  Hawkgram - Telegram MTProto API Client Library for Python
-#  Copyright (C) 2026-present Lone Hawk
+#  Copyright (C) 2026-present Lone Hawk <https://github.com/Lone-Hawk>
 #
 #  This file is part of Hawkgram.
 #
