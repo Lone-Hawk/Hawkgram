@@ -165,3 +165,42 @@ Gift
     :hidden:
 
     {gift_toctree}
+
+EphemeralMessage
+----------------
+
+.. hlist::
+    :columns: 2
+
+    {ephemeral_message_hlist}
+
+.. toctree::
+    :hidden:
+
+    {ephemeral_message_toctree}
+
+CommunityLinkRequest
+--------------------
+
+.. hlist::
+    :columns: 2
+
+    {community_link_request_hlist}
+
+.. toctree::
+    :hidden:
+
+    {community_link_request_toctree}
+
+GuestChatQuery
+--------------
+
+.. hlist::
+    :columns: 2
+
+    {guest_chat_query_hlist}
+
+.. toctree::
+    :hidden:
+
+    {guest_chat_query_toctree}

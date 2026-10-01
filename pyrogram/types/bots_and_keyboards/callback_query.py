@@ -62,6 +62,10 @@ class CallbackQuery(Object, Update):
         matches (List of regex Matches, *optional*):
             A list containing all `Match Objects <https://docs.python.org/3/library/re.html#match-objects>`_ that match
             the data of this callback query. Only applicable when using :obj:`Filters.regex <pyrogram.Filters.regex>`.
+
+        ephemeral_message (:obj:`~pyrogram.types.EphemeralMessage`, *optional*):
+            The ephemeral message with the button that originated the query.
+            Set instead of *message* when the button belongs to an ephemeral message.
     """
 
     def __init__(
@@ -75,7 +79,8 @@ class CallbackQuery(Object, Update):
         inline_message_id: str = None,
         data: Union[str, bytes] = None,
         game_short_name: str = None,
-        matches: List[Match] = None
+        matches: List[Match] = None,
+        ephemeral_message: "types.EphemeralMessage" = None
     ):
         super().__init__(client)
 
@@ -87,9 +92,10 @@ class CallbackQuery(Object, Update):
         self.data = data
         self.game_short_name = game_short_name
         self.matches = matches
+        self.ephemeral_message = ephemeral_message
 
     @staticmethod
-    async def _parse(client: "pyrogram.Client", callback_query, users) -> "CallbackQuery":
+    async def _parse(client: "pyrogram.Client", callback_query, users, chats=None) -> "CallbackQuery":
         message = None
         inline_message_id = None
 
@@ -113,6 +119,13 @@ class CallbackQuery(Object, Update):
                 replies=0,
                 business_connection_id=callback_query.connection_id
             )
+        ephemeral_message = None
+
+        if isinstance(callback_query, raw.types.UpdateEphemeralBotCallbackQuery):
+            ephemeral_message = await types.EphemeralMessage._parse_ephemeral(
+                client, callback_query.message, users, chats or {}
+            )
+
         # Try to decode callback query data into string. If that fails, fallback to bytes instead of decoding by
         # ignoring/replacing errors, this way, button clicks will still work.
         data = getattr(callback_query, "data", None)
@@ -127,9 +140,10 @@ class CallbackQuery(Object, Update):
             from_user=types.User._parse(client, users[callback_query.user_id]),
             message=message,
             inline_message_id=inline_message_id,
-            chat_instance=str(callback_query.chat_instance),
+            chat_instance=str(callback_query.chat_instance) if callback_query.chat_instance is not None else None,
             data=data,
             game_short_name=getattr(callback_query, "game_short_name", None),
+            ephemeral_message=ephemeral_message,
             client=client
         )
 

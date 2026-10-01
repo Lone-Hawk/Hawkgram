@@ -56,6 +56,9 @@ class MessageEntity(Object):
 
         collapsed (``bool``, *optional*):
             For :obj:`~pyrogram.enums.MessageEntityType.BLOCKQUOTE` only, whether the blockquote expandable.
+
+        old_text (``str``, *optional*):
+            For :obj:`~pyrogram.enums.MessageEntityType.DIFF_REPLACE` only, the text that was replaced.
     """
 
     def __init__(
@@ -69,7 +72,8 @@ class MessageEntity(Object):
         user: "types.User" = None,
         language: str = None,
         custom_emoji_id: int = None,
-        collapsed: bool = None
+        collapsed: bool = None,
+        old_text: str = None
     ):
         super().__init__(client)
 
@@ -81,6 +85,7 @@ class MessageEntity(Object):
         self.language = language
         self.custom_emoji_id = custom_emoji_id
         self.collapsed = collapsed
+        self.old_text = old_text
 
     @staticmethod
     def _parse(
@@ -106,6 +111,7 @@ class MessageEntity(Object):
             language=getattr(entity, "language", None),
             custom_emoji_id=getattr(entity, "document_id", None),
             collapsed=getattr(entity, "collapsed", None),
+            old_text=getattr(entity, "old_text", None),
             client=client
         )
 
@@ -133,6 +139,9 @@ class MessageEntity(Object):
             enums.MessageEntityType.EXPANDABLE_BLOCKQUOTE
         ]:
             args.pop("collapsed")
+
+        if self.type != enums.MessageEntityType.DIFF_REPLACE:
+            args.pop("old_text")
 
         entity = self.type.value
 

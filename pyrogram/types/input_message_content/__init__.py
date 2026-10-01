@@ -28,6 +28,7 @@ from .input_venue_message_content import InputVenueMessageContent
 from .input_contact_message_content import InputContactMessageContent
 from .input_invoice_message_content import InputInvoiceMessageContent
 from .input_todo_task import InputTodoTask
+from .input_rich_message_content import InputRichMessageContent
 
 __all__ = [
     "InputMessageContent",
@@ -39,5 +40,6 @@ __all__ = [
     "InputVenueMessageContent",
     "InputContactMessageContent",
     "InputInvoiceMessageContent",
-    "InputTodoTask"
+    "InputTodoTask",
+    "InputRichMessageContent"
 ]

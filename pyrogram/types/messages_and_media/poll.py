@@ -81,6 +81,27 @@ class Poll(Object, Update):
 
         recent_voters (List of :obj:`~pyrogram.types.User`, *optional*):
             List of user whos recently vote.
+
+        allows_revoting (``bool``, *optional*):
+            True, if users can change their vote.
+
+        shuffle_options (``bool``, *optional*):
+            True, if the poll options are shown in a fixed random order.
+
+        hide_results_until_closed (``bool``, *optional*):
+            True, if the poll results are shown only after the poll is closed.
+
+        allows_adding_options (``bool``, *optional*):
+            True, if users can add new options to the poll.
+
+        members_only (``bool``, *optional*):
+            True, if only users that have been members of the chat for more than a day can vote.
+
+        country_codes (List of ``str``, *optional*):
+            Two-letter ISO 3166-1 alpha-2 codes of the countries whose users can vote. If empty, everyone can vote.
+
+        has_unread_votes (``bool``, *optional*):
+            True, if the poll has votes the current user hasn't seen yet.
     """
 
     def __init__(
@@ -102,7 +123,14 @@ class Poll(Object, Update):
         explanation_entities: Optional[List["types.MessageEntity"]] = None,
         open_period: Optional[int] = None,
         close_date: Optional[datetime] = None,
-        recent_voters: List["types.User"] = None
+        recent_voters: List["types.User"] = None,
+        allows_revoting: Optional[bool] = None,
+        shuffle_options: Optional[bool] = None,
+        hide_results_until_closed: Optional[bool] = None,
+        allows_adding_options: Optional[bool] = None,
+        members_only: Optional[bool] = None,
+        country_codes: Optional[List[str]] = None,
+        has_unread_votes: Optional[bool] = None
     ):
         super().__init__(client)
 
@@ -122,6 +150,13 @@ class Poll(Object, Update):
         self.open_period = open_period
         self.close_date = close_date
         self.recent_voters = recent_voters
+        self.allows_revoting = allows_revoting
+        self.shuffle_options = shuffle_options
+        self.hide_results_until_closed = hide_results_until_closed
+        self.allows_adding_options = allows_adding_options
+        self.members_only = members_only
+        self.country_codes = country_codes
+        self.has_unread_votes = has_unread_votes
 
     @staticmethod
     async def _parse(
@@ -150,17 +185,10 @@ class Poll(Object, Update):
                 if result.correct:
                     correct_option_id = i
 
-            o_entities = [types.MessageEntity._parse(client, entity, {}) for entity in answer.text.entities] if answer.text.entities else []
-            option_entities = types.List(filter(lambda x: x is not None, o_entities))
-
-            options.append(
-                types.PollOption(
-                    text=answer.text.text,
-                    voter_count=voter_count,
-                    data=answer.option,
-                    entities=option_entities
-                )
-            )
+            option = types.PollOption._parse(client, answer, users)
+            option.voter_count = voter_count
+            option.entities = option.entities or types.List()
+            options.append(option)
 
         q_entities = [types.MessageEntity._parse(client, entity, {}) for entity in poll.question.entities] if poll.question.entities else []
         question_entities = types.List(filter(lambda x: x is not None, q_entities))
@@ -194,6 +222,13 @@ class Poll(Object, Update):
             open_period=poll.close_period,
             close_date=utils.timestamp_to_datetime(poll.close_date),
             recent_voters=recent_voters if len(recent_voters) > 0 else None,
+            allows_revoting=not poll.revoting_disabled,
+            shuffle_options=poll.shuffle_answers,
+            hide_results_until_closed=poll.hide_results_until_close,
+            allows_adding_options=poll.open_answers,
+            members_only=poll.subscribers_only,
+            country_codes=poll.countries_iso2 or None,
+            has_unread_votes=poll_results.has_unread_votes,
             client=client
         )
 

@@ -60,7 +60,13 @@ class SendPoll:
             "types.ReplyKeyboardMarkup",
             "types.ReplyKeyboardRemove",
             "types.ForceReply"
-        ] = None
+        ] = None,
+        allows_revoting: bool = None,
+        shuffle_options: bool = None,
+        hide_results_until_closed: bool = None,
+        allows_adding_options: bool = None,
+        members_only: bool = None,
+        country_codes: List[str] = None
     ) -> "types.Message":
         """Send a new poll.
 
@@ -171,6 +177,25 @@ class SendPoll:
                 Additional interface options. An object for an inline keyboard, custom reply keyboard,
                 instructions to remove reply keyboard or to force a reply from the user.
 
+            allows_revoting (``bool``, *optional*):
+                Pass False to prevent users from changing their vote.
+
+            shuffle_options (``bool``, *optional*):
+                Pass True to show the poll options in a fixed random order.
+
+            hide_results_until_closed (``bool``, *optional*):
+                Pass True to show the poll results only after the poll is closed.
+
+            allows_adding_options (``bool``, *optional*):
+                Pass True to allow users to add new options to the poll.
+
+            members_only (``bool``, *optional*):
+                Pass True to allow only users that have been members of the chat for more than a day to vote;
+                for channels only.
+
+            country_codes (List of ``str``, *optional*):
+                Two-letter ISO 3166-1 alpha-2 codes of the countries whose users can vote; for channels only.
+
         Returns:
             :obj:`~pyrogram.types.Message`: On success, the sent poll message is returned.
 
@@ -223,6 +248,12 @@ class SendPoll:
                     close_period=open_period,
                     close_date=utils.datetime_to_timestamp(close_date),
                     creator=True,
+                    revoting_disabled=(allows_revoting is False) or None,
+                    shuffle_answers=shuffle_options or None,
+                    hide_results_until_close=hide_results_until_closed or None,
+                    open_answers=allows_adding_options or None,
+                    subscribers_only=members_only or None,
+                    countries_iso2=country_codes or None,
                     hash=0
                 ),
                 correct_answers=[correct_option_id] if correct_option_id is not None else None,

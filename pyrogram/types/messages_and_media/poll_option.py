@@ -18,9 +18,12 @@
 #  You should have received a copy of the GNU Lesser General Public License
 #  along with Hawkgram.  If not, see <http://www.gnu.org/licenses/>.
 
+from datetime import datetime
+from typing import Dict, List, Optional, Union
+
 import pyrogram
+from pyrogram import raw, utils
 from ..object import Object
-from typing import List, Optional
 
 
 class PollOption(Object):
@@ -39,6 +42,12 @@ class PollOption(Object):
 
         entities (List of :obj:`~pyrogram.types.MessageEntity`, *optional*):
             Special entities like usernames, URLs, bot commands, etc. that appear in the option text.
+
+        added_by (:obj:`~pyrogram.types.User` | :obj:`~pyrogram.types.Chat`, *optional*):
+            The user or chat who added the option after the poll was created.
+
+        added_date (:py:obj:`~datetime.datetime`, *optional*):
+            Date the option was added after the poll was created.
     """
 
     def __init__(
@@ -47,6 +56,8 @@ class PollOption(Object):
         voter_count: int = 0,
         data: bytes = None,
         entities: Optional[List["pyrogram.types.MessageEntity"]] = None,
+        added_by: Optional[Union["pyrogram.types.User", "pyrogram.types.Chat"]] = None,
+        added_date: Optional[datetime] = None
     ):
         super().__init__(self)
 
@@ -54,6 +65,40 @@ class PollOption(Object):
         self.voter_count = voter_count
         self.data = data
         self.entities = entities
+        self.added_by = added_by
+        self.added_date = added_date
+
+    @staticmethod
+    def _parse(
+        client: "pyrogram.Client",
+        answer: "raw.types.PollAnswer",
+        users: Dict[int, "raw.types.User"] = None,
+        chats: Dict[int, "raw.types.Chat"] = None
+    ) -> "PollOption":
+        users = users or {}
+        chats = chats or {}
+
+        entities = pyrogram.types.List(filter(None, [
+            pyrogram.types.MessageEntity._parse(client, entity, users)
+            for entity in answer.text.entities or []
+        ]))
+
+        added_by = None
+        added_by_peer = getattr(answer, "added_by", None)
+
+        if isinstance(added_by_peer, raw.types.PeerUser):
+            added_by = pyrogram.types.User._parse(client, users.get(added_by_peer.user_id))
+        elif added_by_peer is not None:
+            raw_chat = chats.get(utils.get_raw_peer_id(added_by_peer))
+            added_by = pyrogram.types.Chat._parse_chat(client, raw_chat) if raw_chat else None
+
+        return PollOption(
+            text=answer.text.text,
+            data=getattr(answer, "option", None),
+            entities=entities or None,
+            added_by=added_by,
+            added_date=utils.timestamp_to_datetime(getattr(answer, "date", None))
+        )
 
     async def write(self, client, i):
         option, entities = (await pyrogram.utils.parse_text_entities(client, self.text, None, self.entities)).values()

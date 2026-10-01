@@ -62,6 +62,8 @@ from .unpin_all_chat_messages import UnpinAllChatMessages
 from .unpin_chat_message import UnpinChatMessage
 from .update_color import UpdateColor
 from .update_folder import UpdateFolder
+from .get_guard_bot_web_app_url import GetGuardBotWebAppUrl
+from .set_chat_join_requests import SetChatJoinRequests
 
 
 class Chats(
@@ -108,6 +110,8 @@ class Chats(
     SetChatProtectedContent,
     TransferChatOwnership,
     UpdateColor,
-    UpdateFolder
+    UpdateFolder,
+    GetGuardBotWebAppUrl,
+    SetChatJoinRequests,
 ):
     pass

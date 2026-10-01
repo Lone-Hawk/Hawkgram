@@ -22,6 +22,7 @@ from .business_schedule import BusinessSchedule
 from .button_style import ButtonStyle
 from .chat_action import ChatAction
 from .chat_event_action import ChatEventAction
+from .chat_join_query_result import ChatJoinQueryResult
 from .chat_join_type import ChatJoinType
 from .chat_member_status import ChatMemberStatus
 from .chat_members_filter import ChatMembersFilter
@@ -52,6 +53,7 @@ __all__ = [
     'ButtonStyle',
     'ChatAction', 
     'ChatEventAction', 
+    'ChatJoinQueryResult',
     'ChatJoinType',
     'ChatMemberStatus', 
     'ChatMembersFilter', 

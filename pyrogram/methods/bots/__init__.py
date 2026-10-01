@@ -39,6 +39,13 @@ from .set_chat_menu_button import SetChatMenuButton
 from .set_game_score import SetGameScore
 from .get_owned_bots import GetOwnedBots
 from .get_similar_bots import GetSimilarBots
+from .answer_chat_join_query import AnswerChatJoinQuery
+from .answer_guest_chat_query import AnswerGuestChatQuery
+from .check_bot_username import CheckBotUsername
+from .create_managed_bot import CreateManagedBot
+from .get_managed_bot_access_settings import GetManagedBotAccessSettings
+from .get_managed_bot_token import GetManagedBotToken
+from .set_managed_bot_access_settings import SetManagedBotAccessSettings
 
 
 class Bots(
@@ -63,5 +70,12 @@ class Bots(
     GetCollectibleItemInfo,
     GetOwnedBots,
     GetSimilarBots,
+    AnswerChatJoinQuery,
+    AnswerGuestChatQuery,
+    CheckBotUsername,
+    CreateManagedBot,
+    GetManagedBotAccessSettings,
+    GetManagedBotToken,
+    SetManagedBotAccessSettings,
 ):
     pass

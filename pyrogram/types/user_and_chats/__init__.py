@@ -64,6 +64,10 @@ from .video_chat_ended import VideoChatEnded
 from .video_chat_members_invited import VideoChatMembersInvited
 from .video_chat_scheduled import VideoChatScheduled
 from .video_chat_started import VideoChatStarted
+from .community_link_request import CommunityLinkRequest
+from .community_member_chats import CommunityMemberChats
+from .web_browser_settings import WebBrowserSettings
+from .web_domain_exception import WebDomainException
 
 __all__ = [
     "Birthday",
@@ -111,5 +115,9 @@ __all__ = [
     "EmojiStatus",
     "ExportedFolderLink",
     "GroupCallMember",
-    "ChatReactions"
+    "ChatReactions",
+    "CommunityLinkRequest",
+    "CommunityMemberChats",
+    "WebBrowserSettings",
+    "WebDomainException"
 ]

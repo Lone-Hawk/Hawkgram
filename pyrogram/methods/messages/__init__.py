@@ -81,6 +81,18 @@ from .stream_media import StreamMedia
 from .vote_poll import VotePoll
 from .transcribe_audio import TranscribeAudio
 from .translate_text import TranslateText
+from .add_poll_option import AddPollOption
+from .compose_rich_message_with_ai import ComposeRichMessageWithAi
+from .delete_chat_member_reaction import DeleteChatMemberReaction
+from .delete_chat_member_reactions import DeleteChatMemberReactions
+from .delete_poll_option import DeletePollOption
+from .edit_rich_message import EditRichMessage
+from .get_personal_channel_messages import GetPersonalChannelMessages
+from .get_rich_message import GetRichMessage
+from .get_unread_poll_votes import GetUnreadPollVotes
+from .read_poll_votes import ReadPollVotes
+from .send_rich_message import SendRichMessage
+from .translate_rich_message import TranslateRichMessage
 
 class Messages(
     AddTaskToTodo,
@@ -145,6 +157,18 @@ class Messages(
     GetCustomEmojiStickers,
     TranscribeAudio,
     TranslateText,
-    StartBot
+    StartBot,
+    AddPollOption,
+    ComposeRichMessageWithAi,
+    DeleteChatMemberReaction,
+    DeleteChatMemberReactions,
+    DeletePollOption,
+    EditRichMessage,
+    GetPersonalChannelMessages,
+    GetRichMessage,
+    GetUnreadPollVotes,
+    ReadPollVotes,
+    SendRichMessage,
+    TranslateRichMessage,
 ):
     pass

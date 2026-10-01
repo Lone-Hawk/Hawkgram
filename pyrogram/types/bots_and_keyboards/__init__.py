@@ -55,6 +55,10 @@ from .requested_chats import RequestedChats
 from .requested_user import RequestedUser
 from .sent_web_app_message import SentWebAppMessage
 from .web_app_info import WebAppInfo
+from .bot_access_settings import BotAccessSettings
+from .guest_chat_query import GuestChatQuery
+from .managed_bot_created import ManagedBotCreated
+from .managed_bot_updated import ManagedBotUpdated
 
 __all__ = [
     "BotAllowed",
@@ -93,5 +97,9 @@ __all__ = [
     "MenuButtonCommands",
     "MenuButtonWebApp",
     "MenuButtonDefault",
-    "SentWebAppMessage"
+    "SentWebAppMessage",
+    "BotAccessSettings",
+    "GuestChatQuery",
+    "ManagedBotCreated",
+    "ManagedBotUpdated"
 ]

@@ -42,6 +42,11 @@ from .message_reaction_updated_handler import MessageReactionUpdatedHandler
 from .message_reaction_count_updated_handler import MessageReactionCountUpdatedHandler
 from .pre_checkout_query_handler import PreCheckoutQueryHandler
 from .shipping_query_handler import ShippingQueryHandler
+from .deleted_ephemeral_messages_handler import DeletedEphemeralMessagesHandler
+from .edited_ephemeral_message_handler import EditedEphemeralMessageHandler
+from .ephemeral_message_handler import EphemeralMessageHandler
+from .guest_chat_query_handler import GuestChatQueryHandler
+from .managed_bot_updated_handler import ManagedBotUpdatedHandler
 
 __all__ = [
     "BotBusinessConnectHandler",
@@ -69,4 +74,9 @@ __all__ = [
     "MessageReactionCountUpdatedHandler",
     "PreCheckoutQueryHandler",
     "ShippingQueryHandler",
+    "DeletedEphemeralMessagesHandler",
+    "EditedEphemeralMessageHandler",
+    "EphemeralMessageHandler",
+    "GuestChatQueryHandler",
+    "ManagedBotUpdatedHandler"
 ]

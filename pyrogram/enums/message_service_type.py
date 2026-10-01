@@ -142,3 +142,21 @@ class MessageServiceType(AutoName):
 
     TODO_TASKS_COMPLETION = auto()
     "To-Do tasks completion/incompletion"
+
+    CHAT_JOINED_FROM_COMMUNITY = auto()
+    "A user joined the chat from a community"
+
+    CHAT_ADDED_TO_COMMUNITY = auto()
+    "The chat was added to a community"
+
+    CHAT_REMOVED_FROM_COMMUNITY = auto()
+    "The chat was removed from a community"
+
+    MANAGED_BOT_CREATED = auto()
+    "A bot managed by another bot was created"
+
+    POLL_OPTION_ADDED = auto()
+    "An option was added to a poll"
+
+    POLL_OPTION_DELETED = auto()
+    "An option was deleted from a poll"

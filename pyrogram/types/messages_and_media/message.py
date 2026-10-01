@@ -438,6 +438,27 @@ class Message(Object, Update):
         chat_join_type (:obj:`~pyrogram.enums.ChatJoinType`, *optional*):
             The message is a service message of the type :obj:`~pyrogram.enums.MessageServiceType.NEW_CHAT_MEMBERS`.
             This field will contain the enumeration type of how the user had joined the chat.
+
+        rich_message (:obj:`~pyrogram.types.RichMessage`, *optional*):
+            Message is a rich message with headings, lists, tables, formulas and other rich formatting.
+
+        chat_joined_from_community_id (``int``, *optional*):
+            Service message: a user joined the chat from the community with this identifier.
+
+        chat_added_to_community_id (``int``, *optional*):
+            Service message: the chat was added to the community with this identifier.
+
+        chat_removed_from_community (``bool``, *optional*):
+            Service message: the chat was removed from its community.
+
+        managed_bot_created (:obj:`~pyrogram.types.ManagedBotCreated`, *optional*):
+            Service message: a bot managed by another bot was created.
+
+        poll_option_added (:obj:`~pyrogram.types.PollOption`, *optional*):
+            Service message: an option was added to a poll.
+
+        poll_option_deleted (:obj:`~pyrogram.types.PollOption`, *optional*):
+            Service message: an option was deleted from a poll.
     """
 
     # TODO: Add game missing field, Also connected_website
@@ -562,6 +583,13 @@ class Message(Object, Update):
         ] = None,
         reactions: List["types.Reaction"] = None,
         chat_join_type: "enums.ChatJoinType" = None,
+        rich_message: "types.RichMessage" = None,
+        chat_joined_from_community_id: int = None,
+        chat_added_to_community_id: int = None,
+        chat_removed_from_community: bool = None,
+        managed_bot_created: "types.ManagedBotCreated" = None,
+        poll_option_added: "types.PollOption" = None,
+        poll_option_deleted: "types.PollOption" = None,
         raw: "raw.types.Message" = None
     ):
         super().__init__(client)
@@ -677,6 +705,13 @@ class Message(Object, Update):
         self.payment_refunded = payment_refunded
         self.reactions = reactions
         self.chat_join_type = chat_join_type
+        self.rich_message = rich_message
+        self.chat_joined_from_community_id = chat_joined_from_community_id
+        self.chat_added_to_community_id = chat_added_to_community_id
+        self.chat_removed_from_community = chat_removed_from_community
+        self.managed_bot_created = managed_bot_created
+        self.poll_option_added = poll_option_added
+        self.poll_option_deleted = poll_option_deleted
         self.raw = raw
 
     async def wait_for_click(
@@ -725,7 +760,8 @@ class Message(Object, Update):
         topics: Dict[int, "raw.types.ForumTopic"] = None,
         is_scheduled: bool = False,
         business_connection_id: str = None,
-        replies: int = 1
+        replies: int = 1,
+        cache: bool = True
     ):
         if isinstance(message, raw.types.MessageEmpty):
             return Message(id=message.id, empty=True, client=client, raw=message)
@@ -1004,7 +1040,7 @@ class Message(Object, Update):
                     parsed_message.todo_tasks_completed = types.TodoTasksCompleted._parse(action)
                 if action.incompleted:
                     parsed_message.todo_tasks_incompleted = types.TodoTasksIncompleted._parse(action)
-                parsed_message.service_type = enums.MessageServiceType.TODO_TASKS_COMPLETION
+                parsed_message.service = enums.MessageServiceType.TODO_TASKS_COMPLETION
                 try:
                     parsed_message.reply_to_message = await client.get_messages(
                         parsed_message.chat.id,
@@ -1028,7 +1064,28 @@ class Message(Object, Update):
                     pass
                 parsed_message.reply_to_message_id = message.reply_to.reply_to_msg_id
 
-            client.message_cache[(parsed_message.chat.id, parsed_message.id)] = parsed_message
+            if isinstance(action, raw.types.MessageActionChatJoinedViaCommunity):
+                parsed_message.chat_joined_from_community_id = utils.get_channel_id(action.community_id)
+                parsed_message.service = enums.MessageServiceType.CHAT_JOINED_FROM_COMMUNITY
+            elif isinstance(action, raw.types.MessageActionChangeCommunity):
+                if action.community_id:
+                    parsed_message.chat_added_to_community_id = utils.get_channel_id(action.community_id)
+                    parsed_message.service = enums.MessageServiceType.CHAT_ADDED_TO_COMMUNITY
+                else:
+                    parsed_message.chat_removed_from_community = True
+                    parsed_message.service = enums.MessageServiceType.CHAT_REMOVED_FROM_COMMUNITY
+            elif isinstance(action, raw.types.MessageActionManagedBotCreated):
+                parsed_message.managed_bot_created = types.ManagedBotCreated._parse(client, action, users)
+                parsed_message.service = enums.MessageServiceType.MANAGED_BOT_CREATED
+            elif isinstance(action, raw.types.MessageActionPollAppendAnswer):
+                parsed_message.poll_option_added = types.PollOption._parse(client, action.answer, users, chats)
+                parsed_message.service = enums.MessageServiceType.POLL_OPTION_ADDED
+            elif isinstance(action, raw.types.MessageActionPollDeleteAnswer):
+                parsed_message.poll_option_deleted = types.PollOption._parse(client, action.answer, users, chats)
+                parsed_message.service = enums.MessageServiceType.POLL_OPTION_DELETED
+
+            if cache:
+                client.message_cache[(parsed_message.chat.id, parsed_message.id)] = parsed_message
 
             if message.reply_to:
                 if message.reply_to.forum_topic:
@@ -1375,7 +1432,9 @@ class Message(Object, Update):
                 parsed_message.message_thread_id = 1
                 parsed_message.is_topic_message = True
 
-            if not parsed_message.poll:  # Do not cache poll messages
+            parsed_message.rich_message = types.RichMessage._parse(client, getattr(message, "rich_message", None))
+
+            if cache and not parsed_message.poll:  # Do not cache poll messages
                 client.message_cache[(parsed_message.chat.id, parsed_message.id)] = parsed_message
 
             return parsed_message

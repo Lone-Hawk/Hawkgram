@@ -219,6 +219,17 @@ class Chat(Object):
             
         bot_verification (:obj:`~pyrogram.types.BotVerification`, *optional*):
             Information about bot verification.
+
+        community_id (``int``, *optional*):
+            Identifier of the community the supergroup, channel or bot belongs to.
+
+        community_chats (List of :obj:`~pyrogram.types.Chat`, *optional*):
+            For communities, the chats that belong to the community.
+            Returned only in :meth:`~pyrogram.Client.get_chat`.
+
+        community_link_requests_count (``int``, *optional*):
+            For communities, number of pending requests to add chats to the community; for administrators only.
+            Returned only in :meth:`~pyrogram.Client.get_chat`.
     """
 
     def __init__(
@@ -275,6 +286,9 @@ class Chat(Object):
         personal_chat: "types.Chat" = None,
         max_reaction_count: int = None,
         subscription_until_date: datetime = None,
+        community_id: int = None,
+        community_chats: List["types.Chat"] = None,
+        community_link_requests_count: int = None,
         gifts_count: int = None,
         bot_verification: "types.BotVerification" = None
     ):
@@ -329,6 +343,9 @@ class Chat(Object):
         self.birthday = birthday
         self.personal_chat = personal_chat
         self.subscription_until_date = subscription_until_date
+        self.community_id = community_id
+        self.community_chats = community_chats
+        self.community_link_requests_count = community_link_requests_count
         self.gifts_count = gifts_count
         self.bot_verification = bot_verification
 
@@ -345,6 +362,7 @@ class Chat(Object):
         return Chat(
             id=peer_id,
             type=enums.ChatType.BOT if user.bot else enums.ChatType.PRIVATE,
+            community_id=Chat._get_community_id(user),
             is_verified=getattr(user, "verified", None),
             is_restricted=getattr(user, "restricted", None),
             is_scam=getattr(user, "scam", None),
@@ -443,8 +461,59 @@ class Chat(Object):
             has_protected_content=getattr(channel, "noforwards", None),
             reply_color=types.ChatColor._parse(getattr(channel, "color", None)),
             subscription_until_date=subscription_until_date,
+            community_id=Chat._get_community_id(channel),
             client=client
         )
+
+    @staticmethod
+    def _get_community_id(peer) -> Optional[int]:
+        linked_community_id = getattr(peer, "linked_community_id", None)
+        return utils.get_channel_id(linked_community_id) if linked_community_id else None
+
+    @staticmethod
+    def _parse_community_chat(
+        client,
+        community: Union[raw.types.Community, raw.types.CommunityForbidden]
+    ) -> Optional["Chat"]:
+        if community is None:
+            return None
+
+        peer_id = utils.get_channel_id(community.id)
+
+        return Chat(
+            id=peer_id,
+            type=enums.ChatType.COMMUNITY,
+            title=community.title,
+            is_creator=getattr(community, "creator", None),
+            photo=types.ChatPhoto._parse(
+                client, getattr(community, "photo", None), peer_id, getattr(community, "access_hash", 0) or 0
+            ),
+            permissions=types.ChatPermissions._parse(getattr(community, "default_banned_rights", None)),
+            client=client
+        )
+
+    @staticmethod
+    def _parse_community_full(
+        client,
+        full_community: "raw.types.CommunityFull",
+        users: Dict[int, "raw.types.User"],
+        chats: Dict[int, "raw.types.Chat"]
+    ) -> "Chat":
+        parsed_chat = Chat._parse_community_chat(client, chats.get(full_community.id))
+        parsed_chat.description = full_community.about or None
+        parsed_chat.community_link_requests_count = full_community.peer_link_requests_pending
+
+        community_chats = []
+
+        for community_peer in full_community.linked_peers:
+            try:
+                community_chats.append(Chat._parse_dialog(client, community_peer.peer, users, chats))
+            except KeyError:
+                continue
+
+        parsed_chat.community_chats = types.List(filter(None, community_chats)) or None
+
+        return parsed_chat
 
     @staticmethod
     def _parse(
@@ -529,6 +598,10 @@ class Chat(Object):
                 parsed_chat.wallpaper = types.Document._parse(client, full_user.wallpaper.document, "wallpaper.jpg")
         else:
             full_chat = chat_full.full_chat
+
+            if isinstance(full_chat, raw.types.CommunityFull):
+                return Chat._parse_community_full(client, full_chat, users, chats)
+
             chat_raw = chats[full_chat.id]
 
             if isinstance(full_chat, raw.types.ChatFull):
@@ -612,6 +685,8 @@ class Chat(Object):
             return Chat._parse_chat_chat(client, chat)
         elif isinstance(chat, raw.types.User):
             return Chat._parse_user_chat(client, chat)
+        elif isinstance(chat, (raw.types.Community, raw.types.CommunityForbidden)):
+            return Chat._parse_community_chat(client, chat)
         else:
             return Chat._parse_channel_chat(client, chat)
 

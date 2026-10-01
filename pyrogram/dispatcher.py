@@ -50,7 +50,12 @@ from pyrogram.handlers import (
   ChatMemberUpdatedHandler,
   ChatJoinRequestHandler,
   StoryHandler,
-  PurchasedPaidMediaHandler
+  PurchasedPaidMediaHandler,
+  EphemeralMessageHandler,
+  EditedEphemeralMessageHandler,
+  DeletedEphemeralMessagesHandler,
+  GuestChatQueryHandler,
+  ManagedBotUpdatedHandler
 )
 from pyrogram.raw.types import (
     UpdateNewMessage, UpdateNewChannelMessage, UpdateNewScheduledMessage,
@@ -66,7 +71,11 @@ from pyrogram.raw.types import (
     UpdateBotMessageReactions,
     UpdateBotShippingQuery,
     UpdateBusinessBotCallbackQuery,
-    UpdateBotPurchasedPaidMedia
+    UpdateBotPurchasedPaidMedia,
+    UpdateNewEphemeralMessage, UpdateEditEphemeralMessage, UpdateDeleteEphemeralMessages,
+    UpdateEphemeralBotCallbackQuery,
+    UpdateBotGuestChatQuery,
+    UpdateManagedBot
 )
 
 log = logging.getLogger(__name__)
@@ -79,7 +88,10 @@ class Dispatcher:
     EDIT_BOT_BUSINESS_MESSAGE_UPDATES = (UpdateBotEditBusinessMessage,)
     DELETE_MESSAGES_UPDATES = (UpdateDeleteMessages, UpdateDeleteChannelMessages)
     DELETE_BOT_BUSINESS_MESSAGES_UPDATES = (UpdateBotDeleteBusinessMessage,)
-    CALLBACK_QUERY_UPDATES = (UpdateBotCallbackQuery, UpdateInlineBotCallbackQuery, UpdateBusinessBotCallbackQuery)
+    CALLBACK_QUERY_UPDATES = (
+        UpdateBotCallbackQuery, UpdateInlineBotCallbackQuery, UpdateBusinessBotCallbackQuery,
+        UpdateEphemeralBotCallbackQuery
+    )
     CHAT_MEMBER_UPDATES = (UpdateChatParticipant, UpdateChannelParticipant, UpdateBotStopped,)
     USER_STATUS_UPDATES = (UpdateUserStatus,)
     BOT_INLINE_QUERY_UPDATES = (UpdateBotInlineQuery,)
@@ -93,6 +105,11 @@ class Dispatcher:
     PRE_CHECKOUT_QUERY_UPDATES = (UpdateBotPrecheckoutQuery,)
     SHIPPING_QUERY_UPDATES = (UpdateBotShippingQuery,)
     PURCHASED_PAID_MEDIA_UPDATES = (UpdateBotPurchasedPaidMedia,)
+    NEW_EPHEMERAL_MESSAGE_UPDATES = (UpdateNewEphemeralMessage,)
+    EDIT_EPHEMERAL_MESSAGE_UPDATES = (UpdateEditEphemeralMessage,)
+    DELETE_EPHEMERAL_MESSAGES_UPDATES = (UpdateDeleteEphemeralMessages,)
+    GUEST_CHAT_QUERY_UPDATES = (UpdateBotGuestChatQuery,)
+    MANAGED_BOT_UPDATES = (UpdateManagedBot,)
 
     def __init__(self, client: "pyrogram.Client"):
         self.client = client
@@ -164,7 +181,7 @@ class Dispatcher:
 
         async def callback_query_parser(update, users, chats):
             return (
-                await pyrogram.types.CallbackQuery._parse(self.client, update, users),
+                await pyrogram.types.CallbackQuery._parse(self.client, update, users, chats),
                 CallbackQueryHandler
             )
 
@@ -246,6 +263,50 @@ class Dispatcher:
                 PurchasedPaidMediaHandler
             )
 
+        async def ephemeral_message_parser(update, users, chats):
+            return (
+                await pyrogram.types.EphemeralMessage._parse_ephemeral(self.client, update.message, users, chats),
+                EphemeralMessageHandler
+            )
+
+        async def edited_ephemeral_message_parser(update, users, chats):
+            return (
+                await pyrogram.types.EphemeralMessage._parse_ephemeral(self.client, update.message, users, chats),
+                EditedEphemeralMessageHandler
+            )
+
+        async def deleted_ephemeral_messages_parser(update, users, chats):
+            try:
+                chat = pyrogram.types.Chat._parse_dialog(self.client, update.peer, users, chats)
+            except KeyError:
+                # The chat isn't included in the update: only its identifier and kind are known
+                chat_type = (
+                    pyrogram.enums.ChatType.PRIVATE if isinstance(update.peer, raw.types.PeerUser)
+                    else pyrogram.enums.ChatType.GROUP if isinstance(update.peer, raw.types.PeerChat)
+                    else pyrogram.enums.ChatType.SUPERGROUP
+                )
+                chat = pyrogram.types.Chat(id=utils.get_peer_id(update.peer), type=chat_type, client=self.client)
+
+            return (
+                pyrogram.types.List(
+                    pyrogram.types.EphemeralMessage(id=message_id, chat=chat, client=self.client)
+                    for message_id in update.ids
+                ),
+                DeletedEphemeralMessagesHandler
+            )
+
+        async def guest_chat_query_parser(update, users, chats):
+            return (
+                await pyrogram.types.GuestChatQuery._parse(self.client, update, users, chats),
+                GuestChatQueryHandler
+            )
+
+        async def managed_bot_updated_parser(update, users, chats):
+            return (
+                pyrogram.types.ManagedBotUpdated._parse(self.client, update, users),
+                ManagedBotUpdatedHandler
+            )
+
         self.update_parsers = {
             Dispatcher.NEW_MESSAGE_UPDATES: message_parser,
             Dispatcher.NEW_BOT_BUSINESS_MESSAGE_UPDATES: bot_business_message_parser,
@@ -266,7 +327,12 @@ class Dispatcher:
             Dispatcher.MESSAGE_BOT_NA_REACTION_UPDATES: message_bot_na_reaction_parser,
             Dispatcher.MESSAGE_BOT_A_REACTION_UPDATES: message_bot_a_reaction_parser,
             Dispatcher.BOT_BUSSINESS_CONNECT_UPDATES: bot_business_connect_parser,
-            Dispatcher.PURCHASED_PAID_MEDIA_UPDATES: purchased_paid_media_parser
+            Dispatcher.PURCHASED_PAID_MEDIA_UPDATES: purchased_paid_media_parser,
+            Dispatcher.NEW_EPHEMERAL_MESSAGE_UPDATES: ephemeral_message_parser,
+            Dispatcher.EDIT_EPHEMERAL_MESSAGE_UPDATES: edited_ephemeral_message_parser,
+            Dispatcher.DELETE_EPHEMERAL_MESSAGES_UPDATES: deleted_ephemeral_messages_parser,
+            Dispatcher.GUEST_CHAT_QUERY_UPDATES: guest_chat_query_parser,
+            Dispatcher.MANAGED_BOT_UPDATES: managed_bot_updated_parser
         }
 
         self.update_parsers = {key: value for key_tuple, value in self.update_parsers.items() for key in key_tuple}

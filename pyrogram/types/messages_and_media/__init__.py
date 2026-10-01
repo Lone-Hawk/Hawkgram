@@ -85,6 +85,11 @@ from .wallpaper_settings import WallpaperSettings
 from .transcribed_audio import TranscribedAudio
 from .translated_text import TranslatedText
 from .text_quote import TextQuote
+from .ai_compose_tone import AiComposeTone
+from .ai_compose_tone_example import AiComposeToneExample
+from .composed_text import ComposedText
+from .rich_message import RichMessage
+from .ephemeral_message import EphemeralMessage
 
 __all__ = [
     "AlternativeVideo",
@@ -153,5 +158,10 @@ __all__ = [
     "TodoTask",
     "TodoTasksAdded",
     "TodoTasksCompleted",
-    "TodoTasksIncompleted"
+    "TodoTasksIncompleted",
+    "AiComposeTone",
+    "AiComposeToneExample",
+    "ComposedText",
+    "RichMessage",
+    "EphemeralMessage"
 ]

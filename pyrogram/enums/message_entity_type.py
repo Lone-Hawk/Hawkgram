@@ -85,5 +85,14 @@ class MessageEntityType(AutoName):
     CUSTOM_EMOJI = raw.types.MessageEntityCustomEmoji
     "Custom emoji"
 
+    DIFF_INSERT = raw.types.MessageEntityDiffInsert
+    "Text inserted by AI proofreading"
+
+    DIFF_DELETE = raw.types.MessageEntityDiffDelete
+    "Text deleted by AI proofreading"
+
+    DIFF_REPLACE = raw.types.MessageEntityDiffReplace
+    "Text replaced by AI proofreading (see ``old_text``)"
+
     UNKNOWN = raw.types.MessageEntityUnknown
     "Unknown message entity type"

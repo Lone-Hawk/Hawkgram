@@ -498,9 +498,12 @@ def start(format: bool = False):
                 elif "vector" in flag_type.lower():
                     sub_type = arg_type.split("<")[1][:-1]
 
+                    # Write the vector exactly when its flag bit is set, which is what the reader checks. The bit is
+                    # set for a non-empty vector, but also by any other field sharing the same bit, in which case an
+                    # empty vector is written. Writing on any other condition desynchronizes the whole stream.
                     write_types += "\n        "
-                    write_types += f"if self.{arg_name} is not None:\n            "
-                    write_types += "b.write(Vector(self.{}{}))\n        ".format(
+                    write_types += f"if flags{number} & (1 << {index}):\n            "
+                    write_types += "b.write(Vector(self.{} or []{}))\n        ".format(
                         arg_name, f", {sub_type.title()}" if sub_type in CORE_TYPES else ""
                     )
 

@@ -216,6 +216,45 @@ Authorization
 
     {authorization}
 
+Communities
+-----------
+
+.. autosummary::
+    :nosignatures:
+
+    {communities}
+
+.. toctree::
+    :hidden:
+
+    {communities}
+
+Ephemeral Messages
+------------------
+
+.. autosummary::
+    :nosignatures:
+
+    {ephemeral}
+
+.. toctree::
+    :hidden:
+
+    {ephemeral}
+
+AI Compose
+----------
+
+.. autosummary::
+    :nosignatures:
+
+    {ai_compose}
+
+.. toctree::
+    :hidden:
+
+    {ai_compose}
+
 Advanced
 --------
 

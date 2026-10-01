@@ -19,11 +19,14 @@
 #  along with Hawkgram.  If not, see <http://www.gnu.org/licenses/>.
 
 from .advanced import Advanced
+from .ai_compose import AiCompose
 from .auth import Auth
 from .bots import Bots
 from .chats import Chats
+from .communities import Communities
 from .contacts import Contacts
 from .decorators import Decorators
+from .ephemeral import EphemeralMessages
 from .forums import Forums
 from .invite_links import InviteLinks
 from .messages import Messages
@@ -55,5 +58,8 @@ class Methods(
     Utilities,
     InviteLinks,
     TelegramBusiness,
+    AiCompose,
+    Communities,
+    EphemeralMessages,
 ):
     pass

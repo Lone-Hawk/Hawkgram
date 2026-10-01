@@ -229,6 +229,18 @@ def pyrogram_api():
             translate_message_text
             start_bot
             delete_chat_history
+            send_rich_message
+            edit_rich_message
+            get_rich_message
+            translate_rich_message
+            compose_rich_message_with_ai
+            add_poll_option
+            delete_poll_option
+            get_unread_poll_votes
+            read_poll_votes
+            delete_chat_member_reaction
+            delete_chat_member_reactions
+            get_personal_channel_messages
         """,
         chats="""
         Chats
@@ -290,6 +302,8 @@ def pyrogram_api():
             unhide_general_topic
             update_color
             update_folder
+            set_chat_join_requests
+            get_guard_bot_web_app_url
         """,
         users="""
         Users
@@ -308,6 +322,12 @@ def pyrogram_api():
             get_common_chats
             get_default_emoji_statuses
             set_emoji_status
+            get_web_browser_settings
+            set_web_browser_settings
+            add_web_browser_exception
+            remove_web_browser_exception
+            remove_all_web_browser_exceptions
+            confirm_bot_connection
         """,
         stories="""
         Stories
@@ -417,6 +437,13 @@ def pyrogram_api():
             get_collectible_item_info
             get_owned_bots
             get_similar_bots
+            check_bot_username
+            create_managed_bot
+            get_managed_bot_token
+            get_managed_bot_access_settings
+            set_managed_bot_access_settings
+            answer_chat_join_query
+            answer_guest_chat_query
         """,
         business="""
         Telegram Business
@@ -445,6 +472,46 @@ def pyrogram_api():
             recover_password
             log_out
             get_active_sessions
+        """,
+        communities="""
+        Communities
+            create_community
+            get_joined_communities
+            get_community_member_chats
+            get_community_link_requests
+            approve_community_link_request
+            decline_community_link_request
+            approve_all_community_link_requests
+            decline_all_community_link_requests
+            set_community_collapsed
+            set_community_chat_hidden
+            remove_chat_from_community
+            ban_community_member
+            unban_community_member
+        """,
+        ephemeral="""
+        Ephemeral Messages
+            send_ephemeral_message
+            edit_ephemeral_message
+            delete_ephemeral_message
+            request_ephemeral_callback_answer
+            get_welcome_messages
+            add_welcome_message
+            edit_welcome_message
+            delete_welcome_message
+            delete_all_welcome_messages
+        """,
+        ai_compose="""
+        AI Compose
+            compose_text_with_ai
+            get_ai_compose_tones
+            get_ai_compose_tone
+            get_ai_compose_tone_example
+            create_ai_compose_tone
+            edit_ai_compose_tone
+            delete_ai_compose_tone
+            save_ai_compose_tone
+            unsave_ai_compose_tone
         """,
         advanced="""
         Advanced
@@ -528,6 +595,10 @@ def pyrogram_api():
             ChatColor
             CollectibleItemInfo
             BotVerification
+            CommunityLinkRequest
+            CommunityMemberChats
+            WebBrowserSettings
+            WebDomainException
         """,
         messages_media="""
         Messages & Media
@@ -603,6 +674,11 @@ def pyrogram_api():
             ScreenshotTaken
             Wallpaper
             WallpaperSettings
+            EphemeralMessage
+            RichMessage
+            AiComposeTone
+            AiComposeToneExample
+            ComposedText
         """,
         stories="""
         Stories
@@ -647,6 +723,10 @@ def pyrogram_api():
             BotAllowed
             BotApp
             BotBusinessConnection
+            BotAccessSettings
+            GuestChatQuery
+            ManagedBotCreated
+            ManagedBotUpdated
         """,
         bot_keyboards="""
         Bot keyboards
@@ -746,6 +826,7 @@ def pyrogram_api():
             InputContactMessageContent
             InputInvoiceMessageContent
             InputTodoTask
+            InputRichMessageContent
         """,
         authorization="""
         Authorization
@@ -927,6 +1008,22 @@ def pyrogram_api():
         ChatJoinRequest
             ChatJoinRequest.approve
             ChatJoinRequest.decline
+        """,
+        ephemeral_message="""
+        EphemeralMessage
+            EphemeralMessage.edit_text
+            EphemeralMessage.edit_reply_markup
+            EphemeralMessage.delete
+            EphemeralMessage.reply_text
+        """,
+        community_link_request="""
+        CommunityLinkRequest
+            CommunityLinkRequest.approve
+            CommunityLinkRequest.decline
+        """,
+        guest_chat_query="""
+        GuestChatQuery
+            GuestChatQuery.answer
         """
     )
 

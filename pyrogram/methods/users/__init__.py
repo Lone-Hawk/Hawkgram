@@ -42,6 +42,12 @@ from .unblock_user import UnblockUser
 from .update_birthday import UpdateBirthday
 from .update_personal_chat import UpdatePersonalChat
 from .update_profile import UpdateProfile
+from .add_web_browser_exception import AddWebBrowserException
+from .confirm_bot_connection import ConfirmBotConnection
+from .get_web_browser_settings import GetWebBrowserSettings
+from .remove_all_web_browser_exceptions import RemoveAllWebBrowserExceptions
+from .remove_web_browser_exception import RemoveWebBrowserException
+from .set_web_browser_settings import SetWebBrowserSettings
 
 
 class Users(
@@ -68,6 +74,12 @@ class Users(
     UpdateProfile,
     GetDefaultEmojiStatuses,
     SetEmojiStatus,
-    SendStory
+    SendStory,
+    AddWebBrowserException,
+    ConfirmBotConnection,
+    GetWebBrowserSettings,
+    RemoveAllWebBrowserExceptions,
+    RemoveWebBrowserException,
+    SetWebBrowserSettings,
 ):
     pass

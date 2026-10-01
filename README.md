@@ -64,7 +64,30 @@ Changes compared to Pyrofork 2.3.69 (Telegram API layer 223).
   indexes. Missing vote counts in poll results are treated as 0.
 - `join_chat` understands Telegram's new join result, including chats protected by a guard bot.
 
+#### New features
+
+- **Communities**: groups of supergroups, channels and bots. Create them, list the ones you joined, manage requests to
+  add chats, hide or remove chats, ban members and collapse them in the chat list. Communities are regular `Chat`
+  objects (`ChatType.COMMUNITY`), and `get_chat` returns their chats and description.
+- **Ephemeral messages**: messages visible to a single user of a chat. Send, edit and delete them, manage the welcome
+  messages shown to new members, and handle them with `on_ephemeral_message`, `on_edited_ephemeral_message` and
+  `on_deleted_ephemeral_messages`. Button clicks on ephemeral messages arrive in `on_callback_query`.
+- **AI compose**: rewrite, proofread, translate or emojify texts with `compose_text_with_ai`, manage built-in and custom
+  tones, and pass a tone to `translate_message_text`.
+- **Rich messages**: send and edit messages with headings, lists, tables and formulas from HTML or Markdown, translate
+  or compose them with AI, read them from `Message.rich_message`, and send them as inline results.
+- **Polls**: new `send_poll` options (revoting, shuffled options, results hidden until closed, options added by users,
+  members-only and country limits), adding and deleting options, unread votes and `MessagesFilter.POLL`.
+- **Bots**: create managed bots and manage their tokens and access, guard new members of a group with
+  `answer_chat_join_query` and `set_chat_join_requests`, and answer guest chat queries with `on_guest_chat_query`.
+- Web browser settings, removing the reactions of a chat member, the messages of a user's personal channel, and new
+  service messages for communities, managed bots and poll options.
+
 #### Bug fixes
+
+- Requests with an empty list in an optional field were malformed, which could make Telegram reject them.
+- Texts proofread by AI couldn't be parsed.
+- `on_purchased_paid_media` crashed when used, and to-do completion messages had no service type.
 
 - Methods that failed on every call now work:
   - all forum topic methods (`create_forum_topic`, `edit_forum_topic`, `close_forum_topic`, `get_forum_topics`, ...)

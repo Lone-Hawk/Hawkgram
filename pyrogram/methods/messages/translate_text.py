@@ -32,7 +32,8 @@ class TranslateText:
         message_ids: Optional[Union[int, List[int]]] = None,
         text: Optional[str] = None,
         parse_mode: Optional["enums.ParseMode"] = None,
-        entities: Optional[List["types.MessageEntity"]] = None
+        entities: Optional[List["types.MessageEntity"]] = None,
+        tone: Optional[str] = None
     ) -> Union["types.TranslatedText", List["types.TranslatedText"]]:
         """Translates a text or message(s) to the given language. If the current user is a Telegram Premium user, then text formatting is preserved.
 
@@ -56,6 +57,10 @@ class TranslateText:
 
             entities (List of :obj:`~pyrogram.types.MessageEntity`):
                 List of special entities that appear in message text, which can be specified instead of *parse_mode*.
+
+            tone (``str``, *optional*):
+                Name of a built-in AI compose tone for the translation, e.g. the *name* of a default tone
+                returned by :meth:`~pyrogram.Client.get_ai_compose_tones`.
 
         Example:
             .. code-block:: python
@@ -90,6 +95,7 @@ class TranslateText:
             r = await self.invoke(
                 raw.functions.messages.TranslateText(
                     to_lang=to_language_code,
+                    tone=tone,
                     text=[
                         raw.types.TextWithEntities(
                             text=message,
@@ -105,6 +111,7 @@ class TranslateText:
             r = await self.invoke(
                 raw.functions.messages.TranslateText(
                     to_lang=to_language_code,
+                    tone=tone,
                     peer=await self.resolve_peer(chat_id),
                     id=ids
                 )

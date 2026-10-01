@@ -41,6 +41,11 @@ from .on_story import OnStory
 from .on_message_reaction_updated import OnMessageReactionUpdated
 from .on_message_reaction_count_updated import OnMessageReactionCountUpdated
 from .on_shipping_query import OnShippingQuery
+from .on_deleted_ephemeral_messages import OnDeletedEphemeralMessages
+from .on_edited_ephemeral_message import OnEditedEphemeralMessage
+from .on_ephemeral_message import OnEphemeralMessage
+from .on_guest_chat_query import OnGuestChatQuery
+from .on_managed_bot_updated import OnManagedBotUpdated
 
 
 class Decorators(
@@ -66,6 +71,11 @@ class Decorators(
     OnStory,
     OnMessageReactionUpdated,
     OnMessageReactionCountUpdated,
-    OnPurchasedPaidMedia
+    OnPurchasedPaidMedia,
+    OnDeletedEphemeralMessages,
+    OnEditedEphemeralMessage,
+    OnEphemeralMessage,
+    OnGuestChatQuery,
+    OnManagedBotUpdated,
 ):
     pass

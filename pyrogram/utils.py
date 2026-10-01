@@ -302,6 +302,57 @@ def get_raw_peer_id(
     return None
 
 
+async def parse_message_from_updates(client: "pyrogram.Client", updates: "raw.base.Updates") -> Optional["types.Message"]:
+    """Return the new or edited message contained in the result of a send or edit request, if any"""
+    users = {u.id: u for u in getattr(updates, "users", [])}
+    chats = {c.id: c for c in getattr(updates, "chats", [])}
+
+    for update in getattr(updates, "updates", []):
+        if isinstance(update, (
+            raw.types.UpdateNewMessage,
+            raw.types.UpdateNewChannelMessage,
+            raw.types.UpdateNewScheduledMessage,
+            raw.types.UpdateEditMessage,
+            raw.types.UpdateEditChannelMessage
+        )):
+            return await types.Message._parse(
+                client, update.message, users, chats,
+                is_scheduled=isinstance(update, raw.types.UpdateNewScheduledMessage)
+            )
+
+    return None
+
+
+async def parse_poll_from_updates(client: "pyrogram.Client", updates: "raw.base.Updates") -> Optional["types.Poll"]:
+    """Return the poll contained in the result of a poll request, if any"""
+    users = {u.id: u for u in getattr(updates, "users", [])}
+
+    for update in getattr(updates, "updates", []):
+        if isinstance(update, raw.types.UpdateMessagePoll):
+            return await types.Poll._parse_update(client, update, users)
+
+    return None
+
+
+def get_input_channel(peer: "raw.base.InputPeer") -> "raw.types.InputChannel":
+    """Convert a resolved channel peer (as returned by resolve_peer) into an InputChannel"""
+    if isinstance(peer, raw.types.InputPeerChannel):
+        return raw.types.InputChannel(channel_id=peer.channel_id, access_hash=peer.access_hash)
+
+    raise ValueError("The chat_id must belong to a supergroup, channel or community")
+
+
+def get_input_user(peer: "raw.base.InputPeer") -> "raw.base.InputUser":
+    """Convert a resolved user peer (as returned by resolve_peer) into an InputUser"""
+    if isinstance(peer, raw.types.InputPeerSelf):
+        return raw.types.InputUserSelf()
+
+    if isinstance(peer, raw.types.InputPeerUser):
+        return raw.types.InputUser(user_id=peer.user_id, access_hash=peer.access_hash)
+
+    raise ValueError("The user_id must belong to a user")
+
+
 def get_peer_id(peer: Union[raw.base.Peer, raw.base.InputPeer]) -> int:
     """Get the non-raw peer id from a Peer object"""
     if (
