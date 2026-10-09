@@ -24,6 +24,9 @@ unknown_errors.txt*
 .env
 .env.*
 
+# Local Claude Code project context (CLAUDE.md and memory)
+.claude/
+
 # Byte-compiled / optimized files
 __pycache__/
 *.py[cod]
