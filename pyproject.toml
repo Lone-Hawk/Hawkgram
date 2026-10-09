@@ -99,6 +99,9 @@ exclude = [
 ignore-vcs = true
 packages = ["pyrogram"]
 
+[tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "function"
+
 # Test runner used by CI (.github/workflows/python.yml) and locally with "tox"
 [tool.tox]
 legacy_tox_ini = """

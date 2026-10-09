@@ -379,7 +379,7 @@ class Client(Methods):
         self.updates_watchdog_event = asyncio.Event()
         self.last_update_time = datetime.now()
         self.listeners = {listener_type: [] for listener_type in pyrogram.enums.ListenerTypes}
-        self.loop = asyncio.get_event_loop()
+        self.loop = utils.get_event_loop()
 
     def __enter__(self):
         return self.start()

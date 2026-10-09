@@ -113,12 +113,7 @@ class Dispatcher:
 
     def __init__(self, client: "pyrogram.Client"):
         self.client = client
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        self.loop = loop
+        self.loop = utils.get_event_loop()
 
         self.handler_worker_tasks = []
         self.locks_list = []
@@ -338,6 +333,8 @@ class Dispatcher:
         self.update_parsers = {key: value for key_tuple, value in self.update_parsers.items() for key in key_tuple}
 
     async def start(self):
+        self.loop = asyncio.get_running_loop()
+
         if not self.client.no_updates:
             for _ in range(self.client.workers):
                 self.locks_list.append(asyncio.Lock())
@@ -365,47 +362,61 @@ class Dispatcher:
 
             log.info("Stopped %s HandlerTasks", self.client.workers)
 
-    def add_handler(self, handler, group: int):
+    def _run_locked(self, update_groups):
+        """Apply a change to the handlers once no handler worker is using them.
+
+        Without a running loop (e.g. decorators at import time) no worker can be running, so the change is applied
+        right away: a task created on a loop that is never run (the client may be started with asyncio.run, which
+        uses a new loop) would leave the handlers unregistered.
+        """
         async def fn():
             for lock in self.locks_list:
                 await lock.acquire()
 
             try:
-                if isinstance(handler, ErrorHandler):
-                    if handler not in self.error_handlers:
-                        self.error_handlers.append(handler)
-                else:
-                    if group not in self.groups:
-                        self.groups[group] = []
-                        self.groups = OrderedDict(sorted(self.groups.items()))
-                    self.groups[group].append(handler)
+                update_groups()
             finally:
                 for lock in self.locks_list:
                     lock.release()
 
-        self.loop.create_task(fn())
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            if self.loop.is_running():
+                # Called from another thread while the client is running: its loop applies the change
+                asyncio.run_coroutine_threadsafe(fn(), self.loop)
+            else:
+                update_groups()
+        else:
+            loop.create_task(fn())
+
+    def add_handler(self, handler, group: int):
+        def update_groups():
+            if isinstance(handler, ErrorHandler):
+                if handler not in self.error_handlers:
+                    self.error_handlers.append(handler)
+            else:
+                if group not in self.groups:
+                    self.groups[group] = []
+                    self.groups = OrderedDict(sorted(self.groups.items()))
+                self.groups[group].append(handler)
+
+        self._run_locked(update_groups)
 
     def remove_handler(self, handler, group: int):
-        async def fn():
-            for lock in self.locks_list:
-                await lock.acquire()
+        def update_groups():
+            if isinstance(handler, ErrorHandler):
+                if handler not in self.error_handlers:
+                    raise ValueError(
+                        f"Error handler {handler} does not exist. Handler was not removed."
+                    )
+                self.error_handlers.remove(handler)
+            else:
+                if group not in self.groups:
+                    raise ValueError(f"Group {group} does not exist. Handler was not removed.")
+                self.groups[group].remove(handler)
 
-            try:
-                if isinstance(handler, ErrorHandler):
-                    if handler not in self.error_handlers:
-                        raise ValueError(
-                            f"Error handler {handler} does not exist. Handler was not removed."
-                        )
-                    self.error_handlers.remove(handler)
-                else:
-                    if group not in self.groups:
-                        raise ValueError(f"Group {group} does not exist. Handler was not removed.")
-                    self.groups[group].remove(handler)
-            finally:
-                for lock in self.locks_list:
-                    lock.release()
-
-        self.loop.create_task(fn())
+        self._run_locked(update_groups)
 
     async def handler_worker(self, lock: asyncio.Lock):
         while True:

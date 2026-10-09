@@ -18,10 +18,10 @@
 #  You should have received a copy of the GNU Lesser General Public License
 #  along with Hawkgram.  If not, see <http://www.gnu.org/licenses/>.
 
-import asyncio
 import inspect
 
 import pyrogram
+from pyrogram import utils
 from pyrogram.methods.utilities.idle import idle
 
 
@@ -72,7 +72,7 @@ class Run:
 
                 app.run(main())
         """
-        loop = asyncio.get_event_loop()
+        loop = utils.get_event_loop()
         run = loop.run_until_complete
 
         if coroutine is not None:

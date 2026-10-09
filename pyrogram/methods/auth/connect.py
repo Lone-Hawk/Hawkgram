@@ -18,6 +18,8 @@
 #  You should have received a copy of the GNU Lesser General Public License
 #  along with Hawkgram.  If not, see <http://www.gnu.org/licenses/>.
 
+import asyncio
+
 import pyrogram
 from pyrogram.session import Session
 
@@ -39,6 +41,10 @@ class Connect:
         # pylint: disable=access-member-before-definition
         if self.is_connected:
             raise ConnectionError("Client is already connected")
+
+        # The client may have been created before the loop it runs on (e.g. a module-level client started with
+        # asyncio.run), so bind it to the running loop
+        self.loop = asyncio.get_running_loop()
 
         await self.load_session()
 

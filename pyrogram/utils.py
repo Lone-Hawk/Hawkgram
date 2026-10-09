@@ -48,11 +48,34 @@ PyromodConfig = SimpleNamespace(
 )
     
 
+def get_event_loop() -> asyncio.AbstractEventLoop:
+    """Return the running event loop, else the current one, creating and setting a new loop when there's none.
+
+    Since Python 3.14 :func:`asyncio.get_event_loop` no longer creates a loop: it raises RuntimeError when no loop
+    is set, e.g. in a new thread or after :func:`asyncio.run` has returned (it resets the current loop to None).
+    """
+    try:
+        return asyncio.get_running_loop()
+    except RuntimeError:
+        pass
+
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop is None or loop.is_closed():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+    return loop
+
+
 async def ainput(prompt: str = "", *, hide: bool = False):
     """Just like the built-in input, but async"""
     with ThreadPoolExecutor(1) as executor:
         func = functools.partial(getpass if hide else input, prompt)
-        return await asyncio.get_event_loop().run_in_executor(executor, func)
+        return await asyncio.get_running_loop().run_in_executor(executor, func)
 
 
 def get_input_media_from_file_id(
@@ -558,7 +581,7 @@ def datetime_to_timestamp(dt: Optional[datetime]) -> Optional[int]:
     return int(dt.timestamp()) if dt else None
 
 async def run_sync(func: Callable[..., TypeVar("Result")], *args: Any, **kwargs: Any) -> TypeVar("Result"):
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, functools.partial(func, *args, **kwargs))
 
 def parse_text_with_entities(client, message: "raw.types.TextWithEntities", users):

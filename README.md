@@ -52,6 +52,20 @@ Hawkgram keeps the `pyrogram` import name, so existing code keeps working unchan
 
 ### Changelog
 
+#### Hawkgram 1.0.7: Python 3.14 event loops
+
+- **A client created outside of a running event loop works with `asyncio.run`.** A client defined at module level
+  and started inside `asyncio.run(main())` now runs on that loop. Its update workers used to be scheduled on another
+  loop that never ran, so handlers never fired and `listen`/`wait_for_message` failed with "attached to a different
+  loop".
+- **Handlers added before the loop starts are registered at once**, e.g. with `@app.on_message()` at import time.
+  They used to wait for a task on the loop the client was created with, so they were lost when the client was
+  started with `asyncio.run`. Removing a handler that doesn't exist now raises `ValueError` right away.
+- **`app.run()` no longer depends on a current event loop.** Since Python 3.14 `asyncio` no longer creates one
+  implicitly, so `app.run()` raised `RuntimeError` when `asyncio.run()` had been used between creating the client and
+  running it. A new loop is created when there's none, or when the current one is closed.
+- Callback query handlers no longer use `asyncio.iscoroutinefunction`, which is deprecated since Python 3.14.
+
 #### Hawkgram 1.0.6: messages with formatted dates
 
 - **Messages with a formatted date are no longer dropped.** `MessageEntityType` was missing `FORMATTED_DATE`, so
