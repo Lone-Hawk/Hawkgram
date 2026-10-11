@@ -23,6 +23,7 @@ request built by a wrapper is checked to be valid on the wire. Responses are can
 """
 
 from io import BytesIO
+from types import SimpleNamespace
 
 import pytest
 
@@ -555,6 +556,24 @@ async def test_web_browser_settings(client):
 
     assert settings.open_external_browser and not settings.show_close_button
     assert settings.external_exceptions[0].domain == "example.com"
+
+
+@pytest.mark.asyncio
+async def test_export_folder_link(client):
+    async def get_folders(folder_id):
+        return SimpleNamespace(title="Folder", included_chats=[SimpleNamespace(id=USER_ID)],
+                               excluded_chats=None, pinned_chats=None)
+
+    client.get_folders = get_folders
+    client.responses = [T.chatlists.ExportedChatlistInvite(
+        filter=T.DialogFilter(id=2, title=text("Folder"), pinned_peers=[], include_peers=[], exclude_peers=[]),
+        invite=T.ExportedChatlistInvite(title="Folder", url="https://t.me/addlist/abc", peers=[]),
+    )]
+
+    link = await client.export_folder_link(2)
+
+    assert client.requests[0].peers == [T.InputPeerUser(user_id=USER_ID, access_hash=7)]
+    assert isinstance(link, types.ExportedFolderLink) and link.link == "https://t.me/addlist/abc"
 
 
 @pytest.mark.asyncio
