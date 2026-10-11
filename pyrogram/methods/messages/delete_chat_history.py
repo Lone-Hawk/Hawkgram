@@ -56,15 +56,15 @@ class DeleteChatHistory:
 
             just_clear (``bool``, *optional*):
                 If True, clear history for the current user, without actually removing chat.
-                For private and simple group chats only.
+                For private and simple group chats only: ``ValueError`` is raised for channels and supergroups.
 
             min_date (:py:obj:`~datetime.datetime`, *optional*):
                 Delete all messages newer than this time.
-                For private and simple group chats only.
+                For private and simple group chats only: ``ValueError`` is raised for channels and supergroups.
 
             max_date (:py:obj:`~datetime.datetime`, *optional*):
                 Delete all messages older than this time.
-                For private and simple group chats only.
+                For private and simple group chats only: ``ValueError`` is raised for channels and supergroups.
 
         Returns:
             ``int``: Amount of affected messages
@@ -78,6 +78,11 @@ class DeleteChatHistory:
         peer = await self.resolve_peer(chat_id)
 
         if isinstance(peer, raw.types.InputPeerChannel):
+            # Channels can't delete by date or just clear: ignoring these would delete the whole history up to
+            # max_id instead of only the part that was asked for
+            if just_clear or min_date is not None or max_date is not None:
+                raise ValueError("just_clear, min_date and max_date can't be used with channels and supergroups")
+
             r = await self.invoke(
                 raw.functions.channels.DeleteHistory(
                     channel=raw.types.InputChannel(
@@ -87,6 +92,13 @@ class DeleteChatHistory:
                     max_id=max_id,
                     for_everyone=revoke
                 )
+            )
+
+            # The deletions are reported as updates, possibly none or several of them
+            return sum(
+                len(update.messages)
+                for update in getattr(r, "updates", [])
+                if isinstance(update, raw.types.UpdateDeleteChannelMessages)
             )
         else:
             r = await self.invoke(
@@ -100,4 +112,4 @@ class DeleteChatHistory:
                 )
             )
 
-        return len(r.updates[0].messages) if isinstance(peer, raw.types.InputPeerChannel) else r.pts_count
+        return r.pts_count

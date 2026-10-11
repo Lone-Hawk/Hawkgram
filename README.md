@@ -94,6 +94,10 @@ Hawkgram keeps the `pyrogram` import name, so existing code keeps working unchan
 - `leave_chat` forgets a channel's update state only after the channel was left, and also when it was given a
   username or link. The state used to be looked up by the `chat_id` as given (so usernames never matched), removed
   before leaving even if leaving failed, and only with `skip_updates=False`.
+- **`delete_chat_history` no longer deletes a whole channel history when given a date range.** `min_date`,
+  `max_date` and `just_clear` were ignored for channels and supergroups, so the whole history up to `max_id` was
+  deleted; they now raise `ValueError` there. The number of deleted messages is counted from all of Telegram's
+  updates instead of raising `IndexError` (after deleting) when there were none.
 
 #### Hawkgram 1.0.8: folder links
 

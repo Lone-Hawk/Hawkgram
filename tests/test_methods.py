@@ -18,11 +18,12 @@
 
 """Regression tests for Client methods, with requests and answers going through FakeClient"""
 
+from datetime import datetime
 from types import SimpleNamespace
 
 import pytest
 
-from pyrogram import errors, raw, types
+from pyrogram import errors, raw, types, utils
 from .test_layer_229 import FakeClient, USER_ID, CHANNEL_ID, CHANNEL_RAW_ID, updates
 
 T = raw.types
@@ -353,3 +354,45 @@ async def test_leave_chat_keeps_the_state_when_leaving_fails(client):
         await client.leave_chat(CHANNEL_ID)
 
     assert await state_ids(client) == [CHANNEL_ID, 0]
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# delete_chat_history in channels
+# ---------------------------------------------------------------------------------------------------------------
+
+def deleted_in_channel(*message_ids):
+    return T.UpdateDeleteChannelMessages(channel_id=CHANNEL_RAW_ID, messages=list(message_ids), pts=1, pts_count=1)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("response, expected", [
+    (updates(), 0),  # used to raise IndexError, after the history had been deleted
+    (updates(T.UpdateConfig(), deleted_in_channel(1, 2), deleted_in_channel(3)), 3),
+], ids=["no-updates", "several-updates"])
+async def test_delete_chat_history_in_channels_counts_deleted_messages(client, response, expected):
+    client.responses = [response]
+
+    assert await client.delete_chat_history(CHANNEL_ID, revoke=True) == expected
+    assert isinstance(client.requests[0], raw.functions.channels.DeleteHistory)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kwargs", [
+    {"min_date": datetime(2026, 1, 1)},
+    {"max_date": datetime(2026, 1, 1)},
+    {"just_clear": True},
+], ids=["min_date", "max_date", "just_clear"])
+async def test_delete_chat_history_in_channels_refuses_unsupported_options(client, kwargs):
+    # These were ignored for channels, so asking to delete a date range deleted the whole history
+    with pytest.raises(ValueError):
+        await client.delete_chat_history(CHANNEL_ID, revoke=True, **kwargs)
+
+    assert client.requests == []
+
+
+@pytest.mark.asyncio
+async def test_delete_chat_history_by_date_in_private_chats(client):
+    client.responses = [T.messages.AffectedHistory(pts=10, pts_count=4, offset=0)]
+
+    assert await client.delete_chat_history(USER_ID, min_date=datetime(2026, 1, 1)) == 4
+    assert client.requests[0].min_date == utils.datetime_to_timestamp(datetime(2026, 1, 1))
