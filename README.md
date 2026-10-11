@@ -98,6 +98,9 @@ Hawkgram keeps the `pyrogram` import name, so existing code keeps working unchan
   `max_date` and `just_clear` were ignored for channels and supergroups, so the whole history up to `max_id` was
   deleted; they now raise `ValueError` there. The number of deleted messages is counted from all of Telegram's
   updates instead of raising `IndexError` (after deleting) when there were none.
+- **MongoDB sessions: `log_out` really deletes the session.** Errors while deleting were silently ignored, and
+  `remove_peers=True` never removed anything (it used `remove()`, which current MongoDB drivers don't have). Peers
+  and usernames are now removed when asked, the update states always, and errors are raised.
 
 #### Hawkgram 1.0.8: folder links
 

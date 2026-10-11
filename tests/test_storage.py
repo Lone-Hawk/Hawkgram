@@ -167,3 +167,70 @@ def test_commit_scheduled_on_a_closed_loop_does_not_block_later_commits(tmp_path
         loop.run_until_complete(storage.close())
     finally:
         loop.close()
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# MongoDB storage
+# ---------------------------------------------------------------------------------------------------------------
+
+class FakeCollection:
+    """The async collection methods MongoStorage.delete() may use (like Motor/async_pymongo, no remove())"""
+
+    def __init__(self, documents, fail=False):
+        self.documents = documents
+        self.fail = fail
+
+    async def delete_one(self, query):
+        if self.fail:
+            raise ConnectionError("database unreachable")
+        self.documents[:] = [d for d in self.documents if d["_id"] != query["_id"]]
+
+    async def delete_many(self, query):
+        assert query == {}
+        self.documents.clear()
+
+
+def mongo_storage(remove_peers, fail=False):
+    pytest.importorskip("pymongo")
+    from pyrogram.storage.mongo_storage import MongoStorage
+
+    storage = MongoStorage.__new__(MongoStorage)
+    storage._session = FakeCollection([{"_id": 0, "auth_key": b"key"}], fail=fail)
+    storage._states = FakeCollection([{"_id": 0, "pts": 1}])
+    storage._peer = FakeCollection([{"_id": 1}])
+    storage._usernames = FakeCollection([{"_id": "alias", "peer_id": 1}])
+    storage._remove_peers = remove_peers
+
+    return storage
+
+
+@pytest.mark.asyncio
+async def test_mongo_delete_removes_the_peers_when_asked():
+    # remove() doesn't exist in current drivers: the AttributeError was swallowed and the peers were kept
+    storage = mongo_storage(remove_peers=True)
+
+    await storage.delete()
+
+    assert storage._session.documents == [] and storage._states.documents == []
+    assert storage._peer.documents == [] and storage._usernames.documents == []
+
+
+@pytest.mark.asyncio
+async def test_mongo_delete_keeps_the_peers_by_default():
+    storage = mongo_storage(remove_peers=False)
+
+    await storage.delete()
+
+    assert storage._session.documents == [] and storage._states.documents == []
+    assert storage._peer.documents == [{"_id": 1}]
+
+
+@pytest.mark.asyncio
+async def test_mongo_delete_failures_are_raised():
+    storage = mongo_storage(remove_peers=True, fail=True)
+
+    # log_out() used to report success while the session stayed in the database
+    with pytest.raises(ConnectionError):
+        await storage.delete()
+
+    assert storage._session.documents != []

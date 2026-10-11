@@ -112,6 +112,8 @@ envlist = py
 deps =
     pytest>=7.4.3
     pytest-asyncio>=0.21.1
+    # Only imported by the MongoStorage tests (the storage itself needs an async driver)
+    pymongo
 commands_pre =
     python -c "from compiler.api.compiler import start as api; from compiler.errors.compiler import start as errors; api(); errors()"
 commands =

@@ -114,12 +114,16 @@ class MongoStorage(Storage):
         pass
 
     async def delete(self):
-        try:
-            await self._session.delete_one({'_id': 0})
-            if self._remove_peers:
-                await self._peer.remove({})
-        except Exception as _:
-            return
+        # Errors are raised: a failure used to be ignored, leaving the logged out session (or the peers) in the
+        # database while log_out() reported success. Collection.remove() doesn't exist in pymongo 4 or the async
+        # drivers, so remove_peers never removed anything.
+        await self._session.delete_one({'_id': 0})
+        # The update states belong to the deleted session, like in a deleted session file
+        await self._states.delete_many({})
+
+        if self._remove_peers:
+            await self._peer.delete_many({})
+            await self._usernames.delete_many({})
 
     async def update_peers(self, peers: List[Tuple[int, int, str, str, str]]):
         """(id, access_hash, type, username, phone_number)"""
