@@ -389,21 +389,16 @@ class Session:
                 if retry > 1:
                     raise BadMsgNotification(result.error_code)
 
-                self._handle_bad_notification()
-                await self.send(data, wait_response, timeout, retry + 1)
+                # The request is sent again as a new message, with a new msg_id. The result of that retry is the
+                # result of this call: returning the notification itself made callers parse it as their answer.
+                # stored_msg_ids holds the server's msg_ids for the replay checks and is left untouched.
+                return await self.send(data, wait_response, timeout, retry + 1)
 
             if isinstance(result, raw.types.BadServerSalt):
                 self.salt = result.new_server_salt
                 return await self.send(data, wait_response, timeout)
 
             return result
-
-    def _handle_bad_notification(self):
-        new_msg_id = MsgId()
-        if self.stored_msg_ids[len(self.stored_msg_ids)-1] >= new_msg_id:
-            new_msg_id = self.stored_msg_ids[len(self.stored_msg_ids)-1] + 4
-            log.debug("Changing msg_id old=%s new=%s", self.stored_msg_ids[len(self.stored_msg_ids)-1], new_msg_id)
-        self.stored_msg_ids[len(self.stored_msg_ids)-1] = new_msg_id
 
     async def invoke(
         self,

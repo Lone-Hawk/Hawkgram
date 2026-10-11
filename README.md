@@ -64,6 +64,9 @@ Hawkgram keeps the `pyrogram` import name, so existing code keeps working unchan
   from Telegram) or a part from Telegram's CDN failed its integrity check, `download_media` saved what it had as if
   it were the whole file and returned its path. It now deletes the partial file, logs the error and returns `None`,
   as documented. `stream_media` raises the error instead of silently ending early.
+- **Requests retried after a `BadMsgNotification` return their real result.** The notification itself was returned
+  as the answer, so the method failed with an unrelated error (or `IndexError`) even when the retry worked. If the
+  server keeps rejecting the request, `BadMsgNotification` is raised.
 
 #### Hawkgram 1.0.8: folder links
 
