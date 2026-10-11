@@ -65,6 +65,32 @@ def test_sanitize_file_name(name, expected):
     assert utils.sanitize_file_name(name) == expected
 
 
+@pytest.mark.parametrize("name, expected", [
+    ("report.pdf", "report.pdf"),
+    ("a:b.txt", "a_b.txt"),
+    ('what?<is>"this"|*.txt', "what__is__this___.txt"),
+    ("notes.txt. . ", "notes.txt"),
+    ("CON", "_CON"),
+    ("nul.zip", "_nul.zip"),
+    ("Com1 .log", "_Com1 .log"),
+    ("LPT¹", "_LPT¹"),
+    ("CONSOLE.txt", "CONSOLE.txt"),
+    ("...", ""),
+    (". .", ""),
+])
+def test_sanitize_file_name_on_windows(monkeypatch, name, expected):
+    # Names Windows can't create, or maps to devices, used to make the download fail or go to a device
+    monkeypatch.setattr(utils, "os", SimpleNamespace(name="nt"))
+
+    assert utils.sanitize_file_name(name) == expected
+
+
+def test_windows_rules_only_apply_on_windows(monkeypatch):
+    monkeypatch.setattr(utils, "os", SimpleNamespace(name="posix"))
+
+    assert utils.sanitize_file_name('CON:"x".txt.') == 'CON:"x".txt.'
+
+
 @pytest.mark.asyncio
 async def test_handle_download_refuses_to_leave_the_directory(tmp_path):
     client = make_client(tmp_path)
@@ -196,6 +222,43 @@ async def test_failed_download_is_raised_to_streams(tmp_path, monkeypatch):
 
     assert len(chunks) == 1
     assert client.media_sessions == {2: session} and not session.stopped
+
+
+@pytest.mark.asyncio
+async def test_concurrent_downloads_with_the_same_name_do_not_collide(tmp_path, monkeypatch):
+    # Both used to write "video.mp4.temp": the second truncated the first one's file, and moving it failed
+    data = b"same video"
+
+    class SlowSession(FakeMediaSession):
+        async def invoke(self, query, *args, **kwargs):
+            # Waiting for the network lets the other download start meanwhile, as with a real connection
+            await asyncio.sleep(0.01)
+            return await super().invoke(query, *args, **kwargs)
+
+    session = SlowSession([file_part(data), file_part(data)])
+    client = await client_with_media_sessions(tmp_path, monkeypatch, session)
+    directory = tmp_path / "downloads"
+    packet = (document_file_id(), str(directory), "video.mp4", False, len(data), None, ())
+
+    results = await asyncio.gather(client.handle_download(packet), client.handle_download(packet))
+
+    assert results == [str(directory / "video.mp4")] * 2
+    assert [p.name for p in directory.iterdir()] == ["video.mp4"]
+    assert (directory / "video.mp4").read_bytes() == data
+
+
+@pytest.mark.asyncio
+async def test_download_replaces_an_existing_file(tmp_path, monkeypatch):
+    session = FakeMediaSession([file_part(b"new")])
+    client = await client_with_media_sessions(tmp_path, monkeypatch, session)
+    directory = tmp_path / "downloads"
+    directory.mkdir()
+    (directory / "video.mp4").write_bytes(b"old content")
+
+    await client.handle_download((document_file_id(), str(directory), "video.mp4", False, 3, None, ()))
+
+    assert (directory / "video.mp4").read_bytes() == b"new"
+    assert [p.name for p in directory.iterdir()] == ["video.mp4"]
 
 
 @pytest.mark.asyncio

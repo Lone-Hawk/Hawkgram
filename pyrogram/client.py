@@ -25,7 +25,6 @@ import logging
 import os
 import platform
 import re
-import shutil
 import sys
 from concurrent.futures.thread import ThreadPoolExecutor
 from datetime import datetime, timedelta
@@ -1136,8 +1135,10 @@ class Client(Methods):
 
             os.makedirs(directory, exist_ok=True)
 
-        temp_file_path = "" if in_memory else file_path + ".temp"
-        file = BytesIO() if in_memory else open(temp_file_path, "wb")
+        # Each download writes to its own temporary file: two downloads with the same name used to share
+        # "<name>.temp", truncating and moving each other's file
+        temp_file_path = "" if in_memory else f"{file_path}.{os.urandom(4).hex()}.temp"
+        file = BytesIO() if in_memory else open(temp_file_path, "xb")
 
         try:
             async for chunk in self.get_file(file_id, file_size, 0, 0, progress, progress_args):
@@ -1163,8 +1164,8 @@ class Client(Methods):
                 return file
             else:
                 file.close()
-                file_path = os.path.splitext(temp_file_path)[0]
-                shutil.move(temp_file_path, file_path)
+                # Same directory, so the file is replaced at once (and an existing one overwritten, also on Windows)
+                os.replace(temp_file_path, file_path)
                 return file_path
 
     async def _get_media_session(self, dc_id: int, is_cdn: bool = False) -> Session:

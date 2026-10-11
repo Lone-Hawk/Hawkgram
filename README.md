@@ -101,6 +101,10 @@ Hawkgram keeps the `pyrogram` import name, so existing code keeps working unchan
 - **MongoDB sessions: `log_out` really deletes the session.** Errors while deleting were silently ignored, and
   `remove_peers=True` never removed anything (it used `remove()`, which current MongoDB drivers don't have). Peers
   and usernames are now removed when asked, the update states always, and errors are raised.
+- **Downloads with problem names work on Windows.** File names chosen by the sender with characters Windows doesn't
+  allow (`<>:"|?*`) made the download fail, trailing dots and spaces were silently dropped, and device names such as
+  `CON` or `NUL.zip` sent the file to a device; these names are now adjusted. Two downloads with the same name at the
+  same time no longer share a temporary file (one used to fail or truncate the other).
 
 #### Hawkgram 1.0.8: folder links
 

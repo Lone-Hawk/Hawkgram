@@ -383,6 +383,13 @@ async def pay_stars_invoice(
     await client.invoke(raw.functions.payments.SendStarsForm(form_id=form.form_id, invoice=invoice))
 
 
+WINDOWS_RESERVED_NAMES = {
+    "CON", "PRN", "AUX", "NUL",
+    *(f"COM{i}" for i in "123456789¹²³"),
+    *(f"LPT{i}" for i in "123456789¹²³"),
+}
+
+
 def sanitize_file_name(file_name: str) -> str:
     """Reduce a file name to a single, safe path component (CWE-22: Path Traversal).
 
@@ -400,8 +407,16 @@ def sanitize_file_name(file_name: str) -> str:
     file_name = "".join(c for c in file_name if c >= " " and c != "\x7f")
 
     if os.name == "nt":
-        # A colon would write to an NTFS alternate data stream
-        file_name = file_name.replace(":", "_")
+        # Characters Windows doesn't allow in names would make the download fail. A colon would also write to an
+        # NTFS alternate data stream.
+        file_name = re.sub(r'[<>:"|?*]', "_", file_name)
+
+        # Windows drops trailing dots and spaces, so "a.txt." would silently become "a.txt"
+        file_name = file_name.rstrip(". ")
+
+        # Device names are reserved, with any extension: "NUL.zip" would be thrown away, "CON" written to the console
+        if file_name.split(".")[0].rstrip(" ").upper() in WINDOWS_RESERVED_NAMES:
+            file_name = "_" + file_name
 
     if file_name.strip() in ("", ".", ".."):
         return ""
