@@ -26,7 +26,6 @@ from typing import Any
 
 import pyrogram
 from pyrogram import raw, types, utils
-from pyrogram.handlers.handler import Handler
 from pyrogram.handlers import (
   BotBusinessConnectHandler,
   BotBusinessMessageHandler,

@@ -35,7 +35,7 @@ from pyrogram.crypto import aes, mtproto, prime, rsa
 from pyrogram.errors import RPCError, SecurityCheckMismatch, UnknownError, rpc_error
 from pyrogram.file_id import FileId, FileType, FileUniqueId, FileUniqueType
 from pyrogram.parser.parser import Parser
-from pyrogram.raw.core import Bytes, Message, TLObject
+from pyrogram.raw.core import Bytes, TLObject
 from pyrogram.session.auth import Auth
 from pyrogram.storage import FileStorage
 

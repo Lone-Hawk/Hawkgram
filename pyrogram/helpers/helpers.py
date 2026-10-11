@@ -26,7 +26,6 @@ def ikb(rows=None):
             line.append(button)
         lines.append(line)
     return InlineKeyboardMarkup(inline_keyboard=lines)
-    # return {'inline_keyboard': lines}
 
 
 def btn(text, value, type="callback_data"):
@@ -39,7 +38,6 @@ def btn(text, value, type="callback_data"):
     :return: InlineKeyboardButton
     """
     return InlineKeyboardButton(text, **{type: value})
-    # return {'text': text, type: value}
 
 
 # The inverse of above
@@ -58,7 +56,6 @@ def bki(keyboard):
             line.append(button)
         lines.append(line)
     return lines
-    # return ikb() format
 
 
 def ntb(button):
@@ -82,7 +79,6 @@ def ntb(button):
     if btn_type != "callback_data":
         button.append(btn_type)
     return button
-    # return {'text': text, type: value}
 
 
 def kb(rows=None, **kwargs):

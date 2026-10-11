@@ -88,7 +88,6 @@ class SendPaymentForm:
 
         form = await self.get_payment_form(chat_id=chat_id, message_id=message_id, invoice_link=invoice_link)
 
-        # if form.invoice.currency == "XTR":
         r = await self.invoke(
             raw.functions.payments.SendStarsForm(
                 form_id=form.id,
@@ -96,14 +95,6 @@ class SendPaymentForm:
             )
         )
         # TODO: Add support for regular invoices (credentials)
-        # else:
-        #     r = await self.invoke(
-        #         raw.functions.payments.SendPaymentForm(
-        #             form_id=form.id,
-        #             invoice=invoice,
-        #             credentials=raw.types.InputPaymentCredentials(data=raw.types.DataJSON(data={}))
-        #         )
-        #     )
 
         medias = []
 
@@ -131,4 +122,3 @@ class SendPaymentForm:
                             medias.append(types.Video._parse(self, doc, video_attributes, file_name))
 
                     return types.List(medias)
-        # elif isinstance(r, raw.types.payments.PaymentVerificationNeeded):

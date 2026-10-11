@@ -33,10 +33,6 @@ CURRENT_DH_PRIME = int(
 )
 
 
-# Recursive variant
-# def gcd(cls, a: int, b: int) -> int:
-#     return cls.gcd(b, a % b) if b else a
-
 def gcd(a: int, b: int) -> int:
     while b:
         a, b = b, a % b

@@ -17,13 +17,7 @@
 #  You should have received a copy of the GNU Lesser General Public License
 #  along with Hawkgram.  If not, see <http://www.gnu.org/licenses/>.
 
-from typing import List, Union
-
-import pyrogram
-from pyrogram import enums
 from pyrogram import raw
-from pyrogram import types
-from pyrogram import utils
 from ..object import Object
 
 

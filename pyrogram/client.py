@@ -52,7 +52,7 @@ from pyrogram.errors import (
 from pyrogram.handlers.handler import Handler
 from pyrogram.methods import Methods
 from pyrogram.session import Auth, Session
-from pyrogram.storage import FileStorage, MemoryStorage, Storage
+from pyrogram.storage import FileStorage, MemoryStorage, Storage, MONGO_AVAIL
 from pyrogram.types import User
 from pyrogram.utils import ainput
 from .connection import Connection
@@ -64,15 +64,9 @@ from .parser import Parser
 from .session.internals import MsgId
 
 log = logging.getLogger(__name__)
-MONGO_AVAIL = False
 
-try:
-    import pymongo
-except Exception:
-    pass
-else:
+if MONGO_AVAIL:
     from pyrogram.storage import MongoStorage
-    MONGO_AVAIL = True
 
 
 class Client(Methods):

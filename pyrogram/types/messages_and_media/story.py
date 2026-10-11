@@ -140,8 +140,6 @@ class Story(Object, Update):
         denied_users: List[int] = None,
         media_areas: List["types.MediaArea"] = None,
         raw: "raw.types.StoryItem" = None
-        #allowed_chats: List[int] = None,
-        #denied_chats: List[int] = None
     ):
         super().__init__(client)
 
@@ -171,8 +169,6 @@ class Story(Object, Update):
         self.denied_users = denied_users
         self.media_areas = media_areas
         self.raw = raw
-        #self.allowed_chats = allowed_chats
-        #self.denied_chats = denied_chats
 
     @staticmethod
     async def _parse(
@@ -200,9 +196,7 @@ class Story(Object, Update):
         sender_chat = None
         privacy = None
         forward_from = None
-        #allowed_chats = None
         allowed_users = None
-        #denied_chats = None
         denied_users = None
         if stories.media:
             if isinstance(stories.media, raw.types.MessageMediaPhoto):
@@ -270,13 +264,6 @@ class Story(Object, Update):
             elif isinstance(priv, raw.types.PrivacyValueDisallowContacts):
                 privacy = enums.StoryPrivacy.NO_CONTACTS
 
-            #if allowed_chats and len(allowed_chats) > 0:
-            #    chats = [int(str(chat_id)[3:]) if str(chat_id).startswith("-100") else chat_id for chat_id in allowed_chats]
-            #    privacy_rules.append(raw.types.InputPrivacyValueAllowChatParticipants(chats=chats))
-            #if denied_chats and len(denied_chats) > 0:
-            #    chats = [int(str(chat_id)[3:]) if str(chat_id).startswith("-100") else chat_id for chat_id in denied_chats]
-            #    privacy_rules.append(raw.types.InputPrivacyValueDisallowChatParticipants(chats=chats))
-
             if isinstance(priv, raw.types.PrivacyValueAllowUsers):
                 allowed_users = priv.users
             if isinstance(priv, raw.types.PrivacyValueDisallowUsers):
@@ -314,8 +301,6 @@ class Story(Object, Update):
             views=types.StoryViews._parse(stories.views),
             privacy=privacy,
             forward_from=forward_from,
-            #allowed_chats=allowed_chats,
-            #denied_chats=denied_chats,
             allowed_users=allowed_users,
             denied_users=denied_users,
             media_areas=media_areas,
@@ -1491,8 +1476,6 @@ class Story(Object, Update):
         privacy: "enums.StoriesPrivacyRules" = None,
         allowed_users: List[int] = None,
         denied_users: List[int] = None,
-        #allowed_chats: List[int] = None,
-        #denied_chats: List[int] = None,
         animation: str = None,
         photo: str = None,
         video: str = None,
@@ -1574,8 +1557,6 @@ class Story(Object, Update):
             chat_id=self.sender_chat.id if self.sender_chat else None,
             story_id=self.id,
             privacy=privacy,
-            #allowed_chats=allowed_chats,
-            #denied_chats=denied_chats,
             allowed_users=allowed_users,
             denied_users=denied_users,
             animation=animation,
@@ -1675,8 +1656,6 @@ class Story(Object, Update):
         privacy: "enums.StoriesPrivacyRules" = None,
         allowed_users: List[int] = None,
         denied_users: List[int] = None,
-        #allowed_chats: List[int] = None,
-        #denied_chats: List[int] = None
     ) -> "types.Story":
         """Bound method *edit_privacy* of :obj:`~pyrogram.types.Story`.
 
@@ -1714,8 +1693,6 @@ class Story(Object, Update):
             chat_id=self.sender_chat.id if self.sender_chat else None,
             story_id=self.id,
             privacy=privacy,
-            #allowed_chats=allowed_chats,
-            #denied_chats=denied_chats,
             allowed_users=allowed_users,
             denied_users=denied_users
         )
@@ -1787,8 +1764,6 @@ class Story(Object, Update):
         privacy: "enums.StoriesPrivacyRules" = None,
         allowed_users: List[int] = None,
         denied_users: List[int] = None,
-        #allowed_chats: List[int] = None,
-        #denied_chats: List[int] = None,
         pinned: bool = None,
         protect_content: bool = None,
         caption: str = None,

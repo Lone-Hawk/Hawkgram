@@ -34,8 +34,6 @@ class ForwardStory:
         privacy: "enums.StoriesPrivacyRules" = None,
         allowed_users: List[int] = None,
         denied_users: List[int] = None,
-        #allowed_chats: List[int] = None,
-        #denied_chats: List[int] = None,
         pinned: bool = None,
         protect_content: bool = None,
         caption: str = None,

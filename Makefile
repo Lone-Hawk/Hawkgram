@@ -1,11 +1,10 @@
 VENV := venv
 PYTHON := $(VENV)/bin/python
-HOST = $(shell ifconfig | grep "inet " | tail -1 | cut -d\  -f2)
 TAG = v$(shell grep -E '__version__ = ".*"' pyrogram/__init__.py | cut -d\" -f2)
 
 RM := rm -rf
 
-.PHONY: venv clean-build clean-api clean api build
+.PHONY: venv clean-docs clean-build clean-api clean api tag dtag
 
 venv:
 	$(RM) $(VENV)
@@ -31,11 +30,6 @@ clean:
 api:
 	cd compiler/api && ../../$(PYTHON) compiler.py
 	cd compiler/errors && ../../$(PYTHON) compiler.py
-
-build:
-	make clean
-	$(PYTHON) setup.py sdist
-	$(PYTHON) setup.py bdist_wheel
 
 tag:
 	git tag $(TAG)

@@ -827,9 +827,6 @@ class Message(Object, Update):
             gift = None
             screenshot_taken = None
             paid_message_price_changed = None
-            todo_tasks_added = None
-            todo_tasks_completed = None
-            todo_tasks_incompleted = None
 
             service_type = None
             chat_join_type = None

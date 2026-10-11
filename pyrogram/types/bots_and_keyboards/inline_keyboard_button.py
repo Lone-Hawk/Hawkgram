@@ -98,7 +98,6 @@ class InlineKeyboardButton(Object):
         switch_inline_query_current_chat: Optional[str] = None,
         callback_game: Optional["types.CallbackGame"] = None,
         requires_password: Optional[bool] = None,
-        # pay: Optional[bool] = None,
         copy_text: Optional[str] = None,
         icon_custom_emoji_id: Optional[str] = None,
         style: "enums.ButtonStyle" = enums.ButtonStyle.DEFAULT
@@ -115,7 +114,6 @@ class InlineKeyboardButton(Object):
         self.switch_inline_query_current_chat = switch_inline_query_current_chat
         self.callback_game = callback_game
         self.requires_password = requires_password
-        # self.pay = pay
         self.copy_text = copy_text
         self.icon_custom_emoji_id = icon_custom_emoji_id
         self.style = style

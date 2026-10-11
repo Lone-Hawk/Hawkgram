@@ -26,9 +26,6 @@ from functools import partial
 from pathlib import Path
 from typing import NamedTuple, List, Tuple
 
-# from autoflake import fix_code
-# from black import format_str, FileMode
-
 HOME_PATH = Path("compiler/api")
 DESTINATION_PATH = Path("pyrogram/raw")
 NOTICE_PATH = "NOTICE"
@@ -149,17 +146,6 @@ def sort_args(args):
             args.remove(i)
 
     return args + flags
-
-
-def remove_whitespaces(source: str) -> str:
-    """Remove whitespaces from blank lines"""
-    lines = source.split("\n")
-
-    for i, _ in enumerate(lines):
-        if re.match(r"^\s+$", lines[i]):
-            lines[i] = ""
-
-    return "\n".join(lines)
 
 
 def get_docstring_arg_type(t: str):
@@ -312,9 +298,6 @@ def start(format: bool = False):
             except KeyError:
                 pass
 
-    # import json
-    # print(json.dumps(namespaces_to_types, indent=2))
-
     for qualtype in types_to_constructors:
         typespace, type = qualtype.split(".") if "." in qualtype else ("", qualtype)
         dir_path = DESTINATION_PATH / "base" / typespace
@@ -393,10 +376,8 @@ def start(format: bool = False):
         else:
             combinator_docs = docs["constructor"]
 
-        for i, arg in enumerate(sorted_args):
-            arg_name, arg_type = arg
+        for arg_name, arg_type in sorted_args:
             is_optional = FLAGS_RE.match(arg_type)
-            flag_number = is_optional.group(1) if is_optional else -1
             arg_type = arg_type.split("?")[-1]
 
             arg_docs = combinator_docs.get(c.qualname, None)
@@ -410,7 +391,7 @@ def start(format: bool = False):
                 "{} ({}{}):\n            {}\n".format(
                     arg_name,
                     get_docstring_arg_type(arg_type),
-                    ", *optional*".format(flag_number) if is_optional else "",
+                    ", *optional*" if is_optional else "",
                     arg_docs
                 )
             )

@@ -118,7 +118,6 @@ class Sticker(Object):
         self.emoji = emoji
         self.set_name = set_name
         self.thumbs = thumbs
-        # self.mask_position = mask_position
 
     cache = {}
 
