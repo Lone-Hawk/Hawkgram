@@ -269,3 +269,41 @@ async def test_gift_shortcuts_pass_max_star_count(client):
 
     assert await gift.transfer(USER_ID, max_star_count=10) is True
     assert isinstance(client.requests[-1], raw.functions.payments.SendStarsForm)
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Short message updates followed by a difference without messages
+# ---------------------------------------------------------------------------------------------------------------
+
+def short_message():
+    return T.UpdateShortMessage(id=5, user_id=USER_ID, message="hi", pts=11, pts_count=1, date=1)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("difference", [
+    T.updates.DifferenceEmpty(date=1, seq=0),
+    T.updates.DifferenceTooLong(pts=20),
+], ids=["empty", "too-long"])
+async def test_short_message_with_an_empty_difference_is_ignored(client, difference):
+    await client.storage.open()
+    client.responses = [difference]
+
+    # This used to raise AttributeError (no new_messages), losing the update handling task
+    await client.handle_updates(short_message())
+
+    assert isinstance(client.requests[0], raw.functions.updates.GetDifference)
+    assert client.dispatcher.updates_queue.empty()
+
+
+@pytest.mark.asyncio
+async def test_short_message_is_dispatched_from_the_difference(client):
+    await client.storage.open()
+    client.responses = [T.updates.Difference(
+        new_messages=[message(5, T.PeerUser(user_id=USER_ID))], new_encrypted_messages=[], other_updates=[],
+        chats=[], users=[], state=T.updates.State(pts=11, qts=0, date=1, seq=0, unread_count=0)
+    )]
+
+    await client.handle_updates(short_message())
+
+    update, users, chats = client.dispatcher.updates_queue.get_nowait()
+    assert isinstance(update, T.UpdateNewMessage) and update.message.id == 5

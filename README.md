@@ -89,6 +89,8 @@ Hawkgram keeps the `pyrogram` import name, so existing code keeps working unchan
   (inline edits on that data center used to keep failing).
 - `sleep_threshold` passed to `invoke` now also applies after a request was retried because of a network error;
   the retry used to fall back to the default threshold and wait out flood waits you asked to receive.
+- A private or group message that arrives in short form no longer raises `AttributeError` in the update task when
+  Telegram has nothing more to send for it (an empty or too long difference).
 
 #### Hawkgram 1.0.8: folder links
 

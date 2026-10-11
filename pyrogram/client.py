@@ -711,19 +711,22 @@ class Client(Methods):
                 )
             )
 
-            if diff.new_messages:
+            # DifferenceEmpty and DifferenceTooLong have neither messages nor updates (nor these attributes)
+            new_messages = getattr(diff, "new_messages", None)
+            other_updates = getattr(diff, "other_updates", None)
+
+            if new_messages:
                 self.dispatcher.updates_queue.put_nowait((
                     raw.types.UpdateNewMessage(
-                        message=diff.new_messages[0],
+                        message=new_messages[0],
                         pts=updates.pts,
                         pts_count=updates.pts_count
                     ),
                     {u.id: u for u in diff.users},
                     {c.id: c for c in diff.chats}
                 ))
-            else:
-                if diff.other_updates:  # The other_updates list can be empty
-                    self.dispatcher.updates_queue.put_nowait((diff.other_updates[0], {}, {}))
+            elif other_updates:
+                self.dispatcher.updates_queue.put_nowait((other_updates[0], {}, {}))
         elif isinstance(updates, raw.types.UpdateShort):
             self.dispatcher.updates_queue.put_nowait((updates.update, {}, {}))
         elif isinstance(updates, raw.types.UpdatesTooLong):
