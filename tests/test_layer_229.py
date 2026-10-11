@@ -79,6 +79,9 @@ class FakeClient(pyrogram.Client):
         TLObject.read(BytesIO(query.write()))
         self.requests.append(query)
         response = self.responses.pop(0) if self.responses else True
+        # A queued exception (e.g. an RPCError) is raised, like Telegram answering with an error
+        if isinstance(response, Exception):
+            raise response
         return wire(response) if isinstance(response, TLObject) else response
 
     async def resolve_peer(self, peer_id):

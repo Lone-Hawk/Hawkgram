@@ -20,14 +20,15 @@
 from typing import Optional
 
 import pyrogram
-from pyrogram import errors, raw
+from pyrogram import errors, raw, utils
 
 
 class UpgradeGift:
     async def upgrade_gift(
         self: "pyrogram.Client",
         message_id: int,
-        keep_details: Optional[bool] = None
+        keep_details: Optional[bool] = None,
+        max_star_count: Optional[int] = None
     ) -> bool:
         """Upgrade star gift to unique.
 
@@ -40,6 +41,11 @@ class UpgradeGift:
             keep_details (``bool``):
                 Pass True if you want to keep the original details of the gift like caption.
 
+            max_star_count (``int``, *optional*):
+                The most Telegram Stars you agree to pay if the upgrade isn't free (wasn't paid for by the sender).
+                By default nothing is paid: :obj:`~pyrogram.errors.PaymentRequired` is raised when the upgrade
+                costs Stars. If it costs more than *max_star_count*, ``ValueError`` is raised and nothing is paid.
+
         Returns:
             ``bool``: On success, True is returned.
 
@@ -48,6 +54,9 @@ class UpgradeGift:
 
                 # Upgrade gift
                 app.upgrade_gift(message_id=123)
+
+                # Pay up to 50 Stars if the upgrade isn't free
+                app.upgrade_gift(message_id=123, max_star_count=50)
         """
         try:
             await self.invoke(
@@ -59,6 +68,10 @@ class UpgradeGift:
                 )
             )
         except errors.PaymentRequired:
+            # Stars are only spent when the caller agreed to, and never more than they allowed
+            if max_star_count is None:
+                raise
+
             invoice = raw.types.InputInvoiceStarGiftUpgrade(
                 stargift=raw.types.InputSavedStarGiftUser(
                     msg_id=message_id
@@ -66,17 +79,6 @@ class UpgradeGift:
                 keep_original_details=keep_details
             )
 
-            form = await self.invoke(
-                raw.functions.payments.GetPaymentForm(
-                    invoice=invoice
-                )
-            )
-
-            await self.invoke(
-                raw.functions.payments.SendStarsForm(
-                    form_id=form.form_id,
-                    invoice=invoice
-                )
-            )
+            await utils.pay_stars_invoice(self, invoice, max_star_count)
 
         return True

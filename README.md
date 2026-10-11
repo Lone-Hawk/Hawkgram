@@ -75,6 +75,10 @@ Hawkgram keeps the `pyrogram` import name, so existing code keeps working unchan
   `KeyError` for some answers, or returned `None`, although the payment had gone through, so a caller retrying the
   "failed" call paid again. It now always returns the list of bought photos and videos, which is empty when the
   invoice isn't for paid media, and it reads all of them instead of only the first message's.
+- **`transfer_gift` and `upgrade_gift` no longer spend Stars unless you allow it** (behaviour change). When Telegram
+  asked for payment, they paid whatever the price was, without saying so. Now they raise `PaymentRequired` by default;
+  pass `max_star_count` (also on `Gift.transfer` and `Gift.upgrade`) to pay up to that many Stars. A higher price, or
+  one that isn't in Stars, raises `ValueError` and nothing is paid.
 
 #### Hawkgram 1.0.8: folder links
 

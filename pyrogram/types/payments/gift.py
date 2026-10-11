@@ -461,7 +461,7 @@ class Gift(Object):
             message_id=self.message_id
         )
 
-    async def upgrade(self) -> bool:
+    async def upgrade(self, max_star_count: Optional[int] = None) -> bool:
         """Bound method *upgrade* of :obj:`~pyrogram.types.Gift`.
 
         Use as a shortcut for:
@@ -472,6 +472,11 @@ class Gift(Object):
                 message_id=message_id
             )
 
+        Parameters:
+            max_star_count (``int``, *optional*):
+                The most Telegram Stars you agree to pay if the upgrade isn't free.
+                By default nothing is paid, see :meth:`~pyrogram.Client.upgrade_gift`.
+
         Example:
             .. code-block:: python
 
@@ -481,10 +486,11 @@ class Gift(Object):
             ``bool``: On success, True is returned.
         """
         return await self._client.upgrade_gift(
-            message_id=self.message_id
+            message_id=self.message_id,
+            max_star_count=max_star_count
         )
 
-    async def transfer(self, to_chat_id: Union[int, str]) -> bool:
+    async def transfer(self, to_chat_id: Union[int, str], max_star_count: Optional[int] = None) -> bool:
         """Bound method *transfer* of :obj:`~pyrogram.types.Gift`.
 
         Use as a shortcut for:
@@ -496,6 +502,14 @@ class Gift(Object):
                 to_chat_id=to_chat_id
             )
 
+        Parameters:
+            to_chat_id (``int`` | ``str``):
+                Unique identifier (int) or username (str) of the target chat you want to transfer the gift to.
+
+            max_star_count (``int``, *optional*):
+                The most Telegram Stars you agree to pay if the transfer isn't free.
+                By default nothing is paid, see :meth:`~pyrogram.Client.transfer_gift`.
+
         Example:
             .. code-block:: python
 
@@ -506,8 +520,9 @@ class Gift(Object):
         """
         return await self._client.transfer_gift(
             message_id=self.message_id,
-            to_chat_id=to_chat_id
-    )
+            to_chat_id=to_chat_id,
+            max_star_count=max_star_count
+        )
 
     async def wear(self) -> bool:
         """Bound method *wear* of :obj:`~pyrogram.types.Gift`.

@@ -357,6 +357,32 @@ async def parse_poll_from_updates(client: "pyrogram.Client", updates: "raw.base.
     return None
 
 
+async def pay_stars_invoice(
+    client: "pyrogram.Client",
+    invoice: "raw.base.InputInvoice",
+    max_star_count: int
+) -> None:
+    """Pay an invoice in Telegram Stars, unless it costs more than *max_star_count*.
+
+    For actions that are free in some cases and paid in others (Telegram answers PAYMENT_REQUIRED): the caller decides
+    how much may be spent, and the price in the payment form is checked before anything is paid.
+    """
+    form = await client.invoke(raw.functions.payments.GetPaymentForm(invoice=invoice))
+    form_invoice = getattr(form, "invoice", None)
+
+    if form_invoice is None or form_invoice.currency != "XTR":
+        raise ValueError("The payment form isn't a Telegram Stars invoice, nothing was paid")
+
+    star_count = sum(price.amount for price in form_invoice.prices)
+
+    if star_count > max_star_count:
+        raise ValueError(
+            f"This costs {star_count} Telegram Stars, more than max_star_count ({max_star_count}): nothing was paid"
+        )
+
+    await client.invoke(raw.functions.payments.SendStarsForm(form_id=form.form_id, invoice=invoice))
+
+
 def sanitize_file_name(file_name: str) -> str:
     """Reduce a file name to a single, safe path component (CWE-22: Path Traversal).
 

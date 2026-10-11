@@ -22,7 +22,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from pyrogram import raw, types
+from pyrogram import errors, raw, types
 from .test_layer_229 import FakeClient, USER_ID, CHANNEL_ID, CHANNEL_RAW_ID, updates
 
 T = raw.types
@@ -180,3 +180,92 @@ async def test_send_payment_form_does_not_fail_after_paying(client, result):
     medias = await pay(client, result)
 
     assert isinstance(medias, types.List) and list(medias) == []
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# transfer_gift and upgrade_gift only pay what the caller allows
+# ---------------------------------------------------------------------------------------------------------------
+
+def gift_payment_form(star_count, currency="XTR"):
+    return T.payments.PaymentFormStarGift(
+        form_id=42,
+        invoice=T.Invoice(currency=currency, prices=[T.LabeledPrice(label="Gift", amount=star_count)])
+    )
+
+
+async def transfer(client, **kwargs):
+    return await client.transfer_gift(message_id=5, to_chat_id=USER_ID, **kwargs)
+
+
+async def upgrade(client, **kwargs):
+    return await client.upgrade_gift(message_id=5, **kwargs)
+
+
+gift_actions = pytest.mark.parametrize("action, free_request, invoice_type", [
+    (transfer, raw.functions.payments.TransferStarGift, T.InputInvoiceStarGiftTransfer),
+    (upgrade, raw.functions.payments.UpgradeStarGift, T.InputInvoiceStarGiftUpgrade),
+], ids=["transfer", "upgrade"])
+
+
+@pytest.mark.asyncio
+@gift_actions
+async def test_free_gift_action_pays_nothing(client, action, free_request, invoice_type):
+    client.responses = [updates()]
+
+    assert await action(client) is True
+    assert [type(r) for r in client.requests] == [free_request]
+
+
+@pytest.mark.asyncio
+@gift_actions
+async def test_paid_gift_action_pays_nothing_by_default(client, action, free_request, invoice_type):
+    # The stars used to be paid automatically, whatever the price
+    client.responses = [errors.PaymentRequired()]
+
+    with pytest.raises(errors.PaymentRequired):
+        await action(client)
+
+    assert [type(r) for r in client.requests] == [free_request]
+
+
+@pytest.mark.asyncio
+@gift_actions
+async def test_paid_gift_action_pays_within_max_star_count(client, action, free_request, invoice_type):
+    client.responses = [errors.PaymentRequired(), gift_payment_form(25), T.payments.PaymentResult(updates=updates())]
+
+    assert await action(client, max_star_count=25) is True
+
+    _, get_form, pay = client.requests
+    assert isinstance(get_form, raw.functions.payments.GetPaymentForm)
+    assert isinstance(get_form.invoice, invoice_type)
+    assert isinstance(pay, raw.functions.payments.SendStarsForm)
+    assert pay.form_id == 42 and pay.invoice == get_form.invoice
+
+
+@pytest.mark.asyncio
+@gift_actions
+@pytest.mark.parametrize("form", [gift_payment_form(26), gift_payment_form(25, currency="USD")], ids=["too-much", "not-stars"])
+async def test_paid_gift_action_refuses_other_prices(client, action, free_request, invoice_type, form):
+    client.responses = [errors.PaymentRequired(), form]
+
+    with pytest.raises(ValueError, match="nothing was paid"):
+        await action(client, max_star_count=25)
+
+    assert not any(isinstance(r, raw.functions.payments.SendStarsForm) for r in client.requests)
+
+
+@pytest.mark.asyncio
+async def test_gift_shortcuts_pass_max_star_count(client):
+    gift = types.Gift(client=client, id=1, message_id=5)
+
+    for call in (gift.transfer(USER_ID), gift.upgrade()):
+        client.responses = [errors.PaymentRequired()]
+
+        with pytest.raises(errors.PaymentRequired):
+            await call
+
+    client.requests.clear()
+    client.responses = [errors.PaymentRequired(), gift_payment_form(10), T.payments.PaymentResult(updates=updates())]
+
+    assert await gift.transfer(USER_ID, max_star_count=10) is True
+    assert isinstance(client.requests[-1], raw.functions.payments.SendStarsForm)
