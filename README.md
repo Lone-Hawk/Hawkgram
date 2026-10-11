@@ -71,6 +71,10 @@ Hawkgram keeps the `pyrogram` import name, so existing code keeps working unchan
 - **Requests retried after a `BadMsgNotification` return their real result.** The notification itself was returned
   as the answer, so the method failed with an unrelated error (or `IndexError`) even when the retry worked. If the
   server keeps rejecting the request, `BadMsgNotification` is raised.
+- **Clients work on machines whose clock is off.** Telegram rejects messages whose time is more than 30 seconds
+  ahead of or 300 seconds behind its own, and its answers then looked too old or too new to be accepted, so
+  requests timed out and the connection kept restarting. Telegram's time is now taken from its rejection (only
+  when it answers a pending request) and used from then on; a warning says how far off the clock is.
 - **`delete_messages` only deletes messages of the chat you give it.** Private chats and basic groups share one
   sequence of message ids, and Telegram's delete request for them names no chat, so `delete_messages(chat_id, 6)`
   deleted message 6 wherever it was. A bot that checked a user's rights in one group could be made to delete a

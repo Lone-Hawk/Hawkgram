@@ -19,13 +19,17 @@
 """Session.send: answers that make the request be sent again"""
 
 import os
+import time
 from types import SimpleNamespace
 
 import pytest
 
 from pyrogram import raw
 from pyrogram.errors import BadMsgNotification, FloodWait
+from pyrogram.raw.core import Message
 from pyrogram.session import Session
+from pyrogram.session.internals import MsgId
+from pyrogram.session.session import Result
 
 T = raw.types
 
@@ -117,3 +121,105 @@ async def test_retries_keep_the_callers_sleep_threshold():
         await session.invoke(raw.functions.Ping(ping_id=1), sleep_threshold=0)
 
     assert len(answers) == 1
+
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# A client clock that is off
+# ---------------------------------------------------------------------------------------------------------------
+
+SKEW = 3600  # The server's clock is an hour ahead of the local one
+
+
+class SkewedServer:
+    """Hands messages to Session.handle_packet as if decrypted from the server, whose msg_ids carry its time"""
+
+    def __init__(self, session, monkeypatch, skew=SKEW):
+        self.session = session
+        self.skew = skew
+        self.counter = 0
+        self.closed = False
+        self.sent_msg_ids = []
+        self.next_message = None
+
+        monkeypatch.setattr("pyrogram.session.session.mtproto.unpack", lambda *args: self.next_message)
+
+    def server_msg_id(self):
+        self.counter += 4
+        return int(time.time() + self.skew) * 2 ** 32 + self.counter + 1
+
+    async def deliver(self, body):
+        self.next_message = Message(body, self.server_msg_id(), 0, 0)
+        await self.session.handle_packet(b"")
+
+    async def close(self):
+        self.closed = True
+
+
+@pytest.fixture
+def local_clock(monkeypatch):
+    """The process-wide MsgId state, restored after the test"""
+    monkeypatch.setattr(MsgId, "server_time_offset", 0)
+    monkeypatch.setattr(MsgId, "last_time", 0)
+    monkeypatch.setattr(MsgId, "offset", 0)
+
+
+def server_time_of(msg_id):
+    return msg_id / 2 ** 32
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("skew, error_code", [(SKEW, 16), (-SKEW, 17)], ids=["clock-behind", "clock-ahead"])
+async def test_requests_work_with_a_client_clock_that_is_off(monkeypatch, local_clock, skew, error_code):
+    session = make_session([])
+    server = SkewedServer(session, monkeypatch, skew)
+
+    class Connection:
+        async def send(self, payload):
+            (msg_id,) = session.results
+            server.sent_msg_ids.append(msg_id)
+
+            if abs(server_time_of(msg_id) - (time.time() + skew)) > 30:
+                # Telegram rejects a msg_id too far from its own time
+                await server.deliver(T.BadMsgNotification(bad_msg_id=msg_id, bad_msg_seqno=0, error_code=error_code))
+            else:
+                await server.deliver(T.RpcResult(req_msg_id=msg_id, result=T.Pong(msg_id=msg_id, ping_id=1)))
+
+        close = server.close
+
+    session.connection = Connection()
+
+    # The server's answers fell outside the msg_id time window, so they were all dropped and the connection closed
+    result = await session.send(raw.functions.Ping(ping_id=1), timeout=1)
+
+    assert isinstance(result, T.Pong)
+    assert not server.closed
+    first, retry = server.sent_msg_ids
+    assert abs(server_time_of(retry) - (time.time() + skew)) < 5
+    assert abs(MsgId.server_time_offset - skew) < 5
+
+
+@pytest.mark.asyncio
+async def test_unsolicited_bad_msg_notification_does_not_change_the_clock(monkeypatch, local_clock):
+    # Only a notification answering a request that is waiting may set the time: an old one replayed after
+    # reconnecting must not
+    session = make_session([])
+    server = SkewedServer(session, monkeypatch)
+    session.connection = server
+
+    await server.deliver(T.BadMsgNotification(bad_msg_id=12345 * 2 ** 32, bad_msg_seqno=0, error_code=16))
+
+    assert server.closed
+    assert MsgId.server_time_offset == 0
+
+
+@pytest.mark.asyncio
+async def test_messages_outside_the_time_window_are_still_dropped(monkeypatch, local_clock):
+    session = make_session([])
+    server = SkewedServer(session, monkeypatch)
+    session.connection = server
+    session.results[MsgId()] = Result()
+
+    await server.deliver(T.Pong(msg_id=0, ping_id=1))
+
+    assert server.closed

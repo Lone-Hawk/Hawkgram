@@ -218,6 +218,19 @@ class Session:
         # Only the types are logged: contents include private messages, login codes and other secrets
         log.debug("Received: %s", ", ".join(type(m.body).__name__ for m in messages))
 
+        # With a local clock that is off, the server rejects our msg_ids (bad_msg_notification 16: too low, 17: too
+        # high) and its own msg_ids fall outside the time window checked below, so nothing would work. The server's
+        # time is taken from such a notification, before that check, but only when it answers a request that is
+        # waiting for its answer: a replayed old notification can't refer to one.
+        # https://core.telegram.org/mtproto/service_messages_about_messages#notice-of-ignored-error-message
+        for msg in messages:
+            if (
+                isinstance(msg.body, raw.types.BadMsgNotification)
+                and msg.body.error_code in (16, 17)
+                and msg.body.bad_msg_id in self.results
+            ):
+                MsgId.set_server_time(msg.msg_id)
+
         for msg in messages:
             if msg.seq_no % 2 != 0:
                 if msg.msg_id in self.pending_acks:

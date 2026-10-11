@@ -27,11 +27,24 @@ log = logging.getLogger(__name__)
 class MsgId:
     last_time = 0
     offset = 0
+    # Seconds to add to the local clock to get Telegram's time. msg_ids must carry the server's time (within -300 and
+    # +30 seconds), so a client whose clock is off has to correct it: see Session.handle_packet
+    server_time_offset = 0
 
     def __new__(cls) -> int:
-        now = int(time.time())
+        now = int(time.time() + cls.server_time_offset)
         cls.offset = (cls.offset + 4) if now == cls.last_time else 0
         msg_id = (now * 2 ** 32) + cls.offset
         cls.last_time = now
 
         return msg_id
+
+    @classmethod
+    def set_server_time(cls, server_msg_id: int):
+        """Synchronize with the server's clock, given a msg_id sent by the server (its time is in the upper 32 bits)"""
+        cls.server_time_offset = server_msg_id / 2 ** 32 - time.time()
+
+        log.warning(
+            "The system clock is %.0f seconds off Telegram's time: using Telegram's time instead",
+            -cls.server_time_offset
+        )
