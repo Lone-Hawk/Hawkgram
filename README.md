@@ -79,6 +79,10 @@ Hawkgram keeps the `pyrogram` import name, so existing code keeps working unchan
   asked for payment, they paid whatever the price was, without saying so. Now they raise `PaymentRequired` by default;
   pass `max_star_count` (also on `Gift.transfer` and `Gift.upgrade`) to pay up to that many Stars. A higher price, or
   one that isn't in Stars, raises `ValueError` and nothing is paid.
+- **`send_resold_gift` only pays the price you agreed to** (behaviour change). It paid whatever the resale price
+  was at that moment, even if the seller had just raised it, and then failed with `AttributeError` although the
+  gift was bought. Pass `max_star_count` (usually the price you saw); without it, or if the gift now costs more,
+  `ValueError` is raised, saying the current price, and nothing is paid. The bought gift's message is returned.
 - **Busy clients write their session file far less often.** Every incoming update was committed (and synced to disk)
   to the `.session` file on its own, several times, blocking the client meanwhile. Peers and update states are now
   committed together at most once a second, and when the client stops.

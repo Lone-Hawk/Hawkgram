@@ -24,7 +24,7 @@ from types import SimpleNamespace
 import pytest
 
 from pyrogram import errors, raw, types, utils
-from .test_layer_229 import FakeClient, USER_ID, CHANNEL_ID, CHANNEL_RAW_ID, updates
+from .test_layer_229 import FakeClient, USER_ID, CHANNEL_ID, CHANNEL_RAW_ID, raw_user, updates
 
 T = raw.types
 
@@ -396,3 +396,59 @@ async def test_delete_chat_history_by_date_in_private_chats(client):
 
     assert await client.delete_chat_history(USER_ID, min_date=datetime(2026, 1, 1)) == 4
     assert client.requests[0].min_date == utils.datetime_to_timestamp(datetime(2026, 1, 1))
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# send_resold_gift only pays the price the caller agreed to
+# ---------------------------------------------------------------------------------------------------------------
+
+GIFT_LINK = "https://t.me/nft/NekoHelmet-9215"
+
+
+@pytest.mark.asyncio
+async def test_resold_gift_is_not_bought_without_max_star_count(client):
+    # The current resale price used to be paid, whatever the seller had just set it to
+    client.responses = [gift_payment_form(500)]
+
+    with pytest.raises(ValueError, match="costs 500 Telegram Stars"):
+        await client.send_resold_gift(GIFT_LINK, USER_ID)
+
+    (get_form,) = client.requests
+    assert isinstance(get_form.invoice, T.InputInvoiceStarGiftResale) and get_form.invoice.slug == "NekoHelmet-9215"
+
+
+@pytest.mark.asyncio
+async def test_resold_gift_is_not_bought_above_max_star_count(client):
+    client.responses = [gift_payment_form(501)]
+
+    with pytest.raises(ValueError, match="nothing was paid"):
+        await client.send_resold_gift(GIFT_LINK, USER_ID, max_star_count=500)
+
+    assert not any(isinstance(r, raw.functions.payments.SendStarsForm) for r in client.requests)
+
+
+@pytest.mark.asyncio
+async def test_resold_gift_is_bought_within_max_star_count(client):
+    client.responses = [gift_payment_form(500), T.payments.PaymentResult(updates=updates())]
+
+    assert await client.send_resold_gift(GIFT_LINK, USER_ID, max_star_count=500) is None
+
+    get_form, pay = client.requests
+    assert isinstance(pay, raw.functions.payments.SendStarsForm)
+    assert pay.form_id == 42 and pay.invoice == get_form.invoice
+
+
+@pytest.mark.asyncio
+async def test_resold_gift_returns_the_gift_message(client):
+    # Parsing the payment result used to raise AttributeError, after the gift had been paid for
+    gift_message = message(9, T.PeerUser(user_id=USER_ID))
+    client.responses = [
+        gift_payment_form(500),
+        T.payments.PaymentResult(updates=updates(
+            T.UpdateNewMessage(message=gift_message, pts=1, pts_count=1), users=[raw_user()]
+        )),
+    ]
+
+    sent = await client.send_resold_gift(GIFT_LINK, USER_ID, max_star_count=500)
+
+    assert isinstance(sent, types.Message) and sent.id == 9
