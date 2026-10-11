@@ -52,7 +52,7 @@ Hawkgram keeps the `pyrogram` import name, so existing code keeps working unchan
 
 ### Changelog
 
-#### Hawkgram 1.0.8 (unreleased): folder links
+#### Hawkgram 1.0.8: folder links
 
 - **`export_folder_link` returns the new link.** It raised `NameError` after Telegram had already created the link,
   so the call failed even though the link existed.
