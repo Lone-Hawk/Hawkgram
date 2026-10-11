@@ -49,22 +49,19 @@ class ExportFolderLink:
         if not folder:
             return
 
-        peers = []
+        # Share the pinned and included chats, each once; excluded chats are never part of an invite
+        excluded_ids = {chat.id for chat in folder.excluded_chats or []}
+        peer_ids = []
 
-        if folder.included_chats:
-            peers.extend(iter(folder.included_chats))
-
-        if folder.excluded_chats:
-            peers.extend(iter(folder.included_chats))
-
-        if folder.pinned_chats:
-            peers.extend(iter(folder.included_chats))
+        for chat in [*(folder.pinned_chats or []), *(folder.included_chats or [])]:
+            if chat.id not in excluded_ids and chat.id not in peer_ids:
+                peer_ids.append(chat.id)
 
         r = await self.invoke(
             raw.functions.chatlists.ExportChatlistInvite(
                 chatlist=raw.types.InputChatlistDialogFilter(filter_id=folder_id),
                 title=folder.title,
-                peers=[await self.resolve_peer(i.id) for i in peers],
+                peers=[await self.resolve_peer(i) for i in peer_ids],
             )
         )
 

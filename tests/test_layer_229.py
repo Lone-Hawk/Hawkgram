@@ -577,6 +577,32 @@ async def test_export_folder_link(client):
 
 
 @pytest.mark.asyncio
+async def test_export_folder_link_shares_pinned_and_included_chats_once(client):
+    # Excluded chats used to be shared as copies of the included ones, and pinned chats were never shared
+    async def get_folders(folder_id):
+        return SimpleNamespace(
+            title="Folder",
+            pinned_chats=[SimpleNamespace(id=CHANNEL_ID), SimpleNamespace(id=USER_ID)],
+            included_chats=[SimpleNamespace(id=USER_ID), SimpleNamespace(id=BOT_ID), SimpleNamespace(id=COMMUNITY_ID)],
+            excluded_chats=[SimpleNamespace(id=COMMUNITY_ID)],
+        )
+
+    client.get_folders = get_folders
+    client.responses = [T.chatlists.ExportedChatlistInvite(
+        filter=T.DialogFilter(id=2, title=text("Folder"), pinned_peers=[], include_peers=[], exclude_peers=[]),
+        invite=T.ExportedChatlistInvite(title="Folder", url="https://t.me/addlist/abc", peers=[]),
+    )]
+
+    await client.export_folder_link(2)
+
+    assert client.requests[0].peers == [
+        T.InputPeerChannel(channel_id=CHANNEL_RAW_ID, access_hash=9),
+        T.InputPeerUser(user_id=USER_ID, access_hash=7),
+        T.InputPeerUser(user_id=BOT_ID, access_hash=7),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_managed_bot_access_settings(client):
     client.responses = [True, T.bots.AccessSettings(restricted=True, add_users=[raw_user()])]
 
