@@ -18,10 +18,10 @@
 #  You should have received a copy of the GNU Lesser General Public License
 #  along with Hawkgram.  If not, see <http://www.gnu.org/licenses/>.
 
-from typing import Union, Iterable
+from typing import Union, Iterable, List
 
 import pyrogram
-from pyrogram import raw
+from pyrogram import raw, utils
 
 
 class DeleteMessages:
@@ -44,6 +44,8 @@ class DeleteMessages:
 
             message_ids (``int`` | Iterable of ``int``):
                 An iterable of message identifiers to delete (integers) or a single message id.
+                Only messages in the chat given by *chat_id* are deleted: identifiers of messages in other chats are
+                ignored.
 
             revoke (``bool``, *optional*):
                 Deletes messages on both parts.
@@ -77,6 +79,14 @@ class DeleteMessages:
                 )
             )
         else:
+            # messages.DeleteMessages takes no chat: private chats and basic groups share one sequence of message
+            # ids, so an id given for this chat could belong to any other one. Only the messages that really are in
+            # this chat are deleted.
+            message_ids = await self._get_message_ids_in_chat(peer, message_ids)
+
+            if not message_ids:
+                return 0
+
             r = await self.invoke(
                 raw.functions.messages.DeleteMessages(
                     id=message_ids,
@@ -85,3 +95,25 @@ class DeleteMessages:
             )
 
         return r.pts_count
+
+    async def _get_message_ids_in_chat(
+        self: "pyrogram.Client",
+        peer: "raw.base.InputPeer",
+        message_ids: List[int]
+    ) -> List[int]:
+        if isinstance(peer, raw.types.InputPeerSelf):
+            chat_id = await self.storage.user_id()
+        else:
+            chat_id = utils.get_peer_id(peer)
+
+        r = await self.invoke(
+            raw.functions.messages.GetMessages(
+                id=[raw.types.InputMessageID(id=message_id) for message_id in message_ids]
+            )
+        )
+
+        return [
+            message.id
+            for message in r.messages
+            if not isinstance(message, raw.types.MessageEmpty) and utils.get_peer_id(message.peer_id) == chat_id
+        ]

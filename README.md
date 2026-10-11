@@ -67,6 +67,10 @@ Hawkgram keeps the `pyrogram` import name, so existing code keeps working unchan
 - **Requests retried after a `BadMsgNotification` return their real result.** The notification itself was returned
   as the answer, so the method failed with an unrelated error (or `IndexError`) even when the retry worked. If the
   server keeps rejecting the request, `BadMsgNotification` is raised.
+- **`delete_messages` only deletes messages of the chat you give it.** Private chats and basic groups share one
+  sequence of message ids, and Telegram's delete request for them names no chat, so `delete_messages(chat_id, 6)`
+  deleted message 6 wherever it was. A bot that checked a user's rights in one group could be made to delete a
+  message in another. Ids of messages in other chats are now ignored (this costs one extra request).
 
 #### Hawkgram 1.0.8: folder links
 
