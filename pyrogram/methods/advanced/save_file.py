@@ -49,10 +49,11 @@ class SaveFile:
         the account. Session files can still be sent deliberately by passing an opened file object.
         """
         resolved = os.path.realpath(path)
+        # Only file based storages have a path here: MongoStorage.database is a database object, for example
         own_database = getattr(self.storage, "database", None)
 
         if resolved.lower().endswith(SESSION_FILE_SUFFIXES) or (
-            own_database is not None and resolved == os.path.realpath(own_database)
+            isinstance(own_database, (str, os.PathLike)) and resolved == os.path.realpath(own_database)
         ):
             raise ValueError(
                 "Refusing to upload a session file given as a path, since it grants full access to the account. "

@@ -166,6 +166,31 @@ def test_regular_files_can_be_uploaded_by_path(tmp_path):
     make_client(tmp_path)._check_uploadable_path("photo.jpg")
 
 
+class FakeMongoDatabase:
+    """Like Motor/async_pymongo databases: any attribute is a collection, and it isn't a path"""
+
+    def __getattr__(self, name):
+        return f"collection {name}"
+
+
+def test_storages_without_a_database_path_can_upload_by_path(tmp_path):
+    # MongoStorage.database is a database object: comparing it to the path used to raise TypeError on every upload
+    client = make_client(tmp_path)
+    client.storage = SimpleNamespace(database=FakeMongoDatabase())
+
+    client._check_uploadable_path("photo.jpg")
+
+
+def test_own_database_is_not_uploaded_by_path_whatever_its_name(tmp_path):
+    client = make_client(tmp_path)
+    client.storage = SimpleNamespace(database=tmp_path / "accounts.db")
+
+    with pytest.raises(ValueError):
+        client._check_uploadable_path(str(tmp_path / "accounts.db"))
+
+    client._check_uploadable_path(str(tmp_path / "other.db"))
+
+
 # ---------------------------------------------------------------------------------------------------------------
 # MTProto: integrity is verified before parsing
 # ---------------------------------------------------------------------------------------------------------------
