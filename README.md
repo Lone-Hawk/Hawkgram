@@ -52,7 +52,7 @@ Hawkgram keeps the `pyrogram` import name, so existing code keeps working unchan
 
 ### Changelog
 
-#### Hawkgram 1.0.9 (unreleased): HTML output escaping and Mongo uploads
+#### Hawkgram 1.0.9 (unreleased): security review fixes
 
 - **`Message.text.html` and `.caption.html` escape all of the text.** Text before, after or outside of any formatting
   was returned as is, so a user who typed `<b>` or `<a href="tg://user?id=…">` got real formatting and mentions when a
@@ -60,6 +60,10 @@ Hawkgram keeps the `pyrogram` import name, so existing code keeps working unchan
   language and a link's URL are now escaped too, so they can't break out of their attribute.
 - **Clients using MongoDB sessions can upload files by path again.** Since 1.0.1 the session file check raised
   `TypeError` for every `send_document`, `send_photo`, etc. given a file path when `mongodb=` was used.
+- **Failed downloads are no longer saved as complete files.** When a download broke off (a lost connection, an error
+  from Telegram) or a part from Telegram's CDN failed its integrity check, `download_media` saved what it had as if
+  it were the whole file and returned its path. It now deletes the partial file, logs the error and returns `None`,
+  as documented. `stream_media` raises the error instead of silently ending early.
 
 #### Hawkgram 1.0.8: folder links
 

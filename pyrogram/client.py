@@ -1150,6 +1150,9 @@ class Client(Methods):
             if isinstance(e, pyrogram.errors.FloodWait):
                 raise e
 
+            if not isinstance(e, pyrogram.StopTransmission):
+                log.exception("Download failed")
+
             return None
         else:
             if in_memory:
@@ -1370,12 +1373,8 @@ class Client(Methods):
                         raise e
                     finally:
                         await cdn_session.stop()
-            except pyrogram.StopTransmission:
-                raise
-            except pyrogram.errors.FloodWait:
-                raise
-            except Exception as e:
-                log.exception(e)
+            # Errors are raised, not logged and swallowed: ending the generator early would make a failed download,
+            # or a CDN chunk that failed its hash check, look like a complete (truncated) file to the caller
             finally:
                 await session.stop()
 

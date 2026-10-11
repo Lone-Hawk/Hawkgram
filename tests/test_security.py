@@ -99,6 +99,145 @@ async def test_download_media_strips_directories_from_sender_file_names(tmp_path
 
 
 # ---------------------------------------------------------------------------------------------------------------
+# Failed or tampered downloads are not saved as complete files
+# ---------------------------------------------------------------------------------------------------------------
+
+CHUNK_SIZE = 1024 * 1024
+
+
+class FakeMediaSession:
+    """Stands in for the sessions get_file() opens: answers each request with the next answer, raising exceptions"""
+
+    def __init__(self, answers):
+        self.answers = list(answers)
+        self.requests = []
+        self.stopped = False
+
+    async def start(self):
+        pass
+
+    async def stop(self):
+        self.stopped = True
+
+    async def invoke(self, query, *args, **kwargs):
+        self.requests.append(query)
+        answer = self.answers.pop(0)
+
+        if isinstance(answer, BaseException):
+            raise answer
+
+        return answer
+
+
+def file_part(data: bytes):
+    return T.upload.File(type=T.storage.FileUnknown(), mtime=0, bytes=data)
+
+
+def use_media_sessions(monkeypatch, *sessions):
+    """Make the next Session() calls in pyrogram.client return these sessions, in order"""
+    created = list(sessions)
+    monkeypatch.setattr("pyrogram.client.Session", lambda *args, **kwargs: created.pop(0))
+
+
+async def client_with_media_sessions(tmp_path, monkeypatch, *sessions):
+    client = make_client(tmp_path)
+    await client.storage.open()
+    use_media_sessions(monkeypatch, *sessions)
+
+    return client
+
+
+def document_file_id():
+    return FileId(file_type=FileType.DOCUMENT, dc_id=2, media_id=1, access_hash=2)
+
+
+@pytest.mark.asyncio
+async def test_complete_download_is_saved(tmp_path, monkeypatch):
+    data = os.urandom(CHUNK_SIZE + 10)
+    session = FakeMediaSession([file_part(data[:CHUNK_SIZE]), file_part(data[CHUNK_SIZE:])])
+    client = await client_with_media_sessions(tmp_path, monkeypatch, session)
+    directory = tmp_path / "downloads"
+
+    result = await client.handle_download(
+        (document_file_id(), str(directory), "video.mp4", False, len(data), None, ())
+    )
+
+    assert result == str(directory / "video.mp4")
+    assert (directory / "video.mp4").read_bytes() == data
+    assert [p.name for p in directory.iterdir()] == ["video.mp4"]
+
+
+@pytest.mark.asyncio
+async def test_failed_download_is_not_saved(tmp_path, monkeypatch):
+    # The connection is lost after the first of three chunks: this used to be saved as a complete, truncated file
+    session = FakeMediaSession([file_part(bytes(CHUNK_SIZE)), OSError("connection lost")])
+    client = await client_with_media_sessions(tmp_path, monkeypatch, session)
+    directory = tmp_path / "downloads"
+
+    result = await client.handle_download(
+        (document_file_id(), str(directory), "video.mp4", False, 3 * CHUNK_SIZE, None, ())
+    )
+
+    assert result is None
+    assert list(directory.iterdir()) == []
+    assert session.stopped
+
+
+@pytest.mark.asyncio
+async def test_failed_download_is_raised_to_streams(tmp_path, monkeypatch):
+    session = FakeMediaSession([file_part(bytes(CHUNK_SIZE)), OSError("connection lost")])
+    client = await client_with_media_sessions(tmp_path, monkeypatch, session)
+    chunks = []
+
+    with pytest.raises(OSError, match="connection lost"):
+        async for chunk in client.get_file(document_file_id(), 3 * CHUNK_SIZE):
+            chunks.append(chunk)
+
+    assert len(chunks) == 1
+    assert session.stopped
+
+
+@pytest.mark.asyncio
+async def test_cdn_chunk_failing_its_hash_check_is_not_saved(tmp_path, monkeypatch):
+    from pyrogram.errors import CDNFileHashMismatch
+
+    class FakeAuth:
+        def __init__(self, *args):
+            pass
+
+        async def create(self):
+            return bytes(256)
+
+    monkeypatch.setattr("pyrogram.client.Auth", FakeAuth)
+
+    # The CDN sends data whose hash doesn't match the one the main DC gives for it
+    tampered = os.urandom(1000)
+    redirect = T.upload.FileCdnRedirect(
+        dc_id=2, file_token=b"token", encryption_key=bytes(32), encryption_iv=bytes(16), file_hashes=[]
+    )
+    wrong_hash = T.FileHash(offset=0, limit=CHUNK_SIZE, hash=bytes(32))
+
+    def sessions():
+        return FakeMediaSession([redirect, [wrong_hash]]), FakeMediaSession([T.upload.CdnFile(bytes=tampered)])
+
+    client = await client_with_media_sessions(tmp_path, monkeypatch, *sessions())
+
+    with pytest.raises(CDNFileHashMismatch):
+        async for _ in client.get_file(document_file_id(), len(tampered)):
+            pass
+
+    use_media_sessions(monkeypatch, *sessions())
+    directory = tmp_path / "downloads"
+
+    result = await client.handle_download(
+        (document_file_id(), str(directory), "video.mp4", False, len(tampered), None, ())
+    )
+
+    assert result is None
+    assert list(directory.iterdir()) == []
+
+
+# ---------------------------------------------------------------------------------------------------------------
 # Markdown parser denial of service
 # ---------------------------------------------------------------------------------------------------------------
 
