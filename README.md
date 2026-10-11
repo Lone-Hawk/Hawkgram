@@ -52,7 +52,7 @@ Hawkgram keeps the `pyrogram` import name, so existing code keeps working unchan
 
 ### Changelog
 
-#### Hawkgram 1.0.9 (unreleased): security review fixes
+#### Hawkgram 1.0.9: security review fixes
 
 - **`Message.text.html` and `.caption.html` escape all of the text.** Text before, after or outside of any formatting
   was returned as is, so a user who typed `<b>` or `<a href="tg://user?id=…">` got real formatting and mentions when a
