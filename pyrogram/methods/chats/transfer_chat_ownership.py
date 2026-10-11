@@ -69,6 +69,12 @@ class TransferChatOwnership:
         if not isinstance(peer_user, raw.types.InputPeerUser):
             raise ValueError("The user_id must belong to a user.")
 
+        # Hashing the password runs in a thread, not on the event loop it would block
+        password_check = await utils.run_sync(
+            utils.compute_password_check,
+            await self.invoke(raw.functions.account.GetPassword()), password
+        )
+
         r = await self.invoke(
             raw.functions.messages.EditChatCreator(
                 peer=peer,
@@ -76,9 +82,7 @@ class TransferChatOwnership:
                     user_id=peer_user.user_id,
                     access_hash=peer_user.access_hash
                 ),
-                password=utils.compute_password_check(
-                    await self.invoke(raw.functions.account.GetPassword()), password
-                ),
+                password=password_check,
             )
         )
 

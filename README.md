@@ -107,6 +107,8 @@ Hawkgram keeps the `pyrogram` import name, so existing code keeps working unchan
   same time no longer share a temporary file (one used to fail or truncate the other).
 - `enable_cloud_password` and `change_cloud_password` check the server's parameters for the new 2FA password, like
   logging in already did, and refuse unknown or unsafe ones instead of hashing the new password with them.
+- Hashing a 2FA password (for logging in, changing or removing it, transferring chat ownership, or a bot button
+  that asks for it) runs in a thread instead of blocking the client's event loop while it computes.
 
 #### Hawkgram 1.0.8: folder links
 

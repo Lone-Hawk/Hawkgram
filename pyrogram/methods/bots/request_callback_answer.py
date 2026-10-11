@@ -80,7 +80,8 @@ class RequestCallbackAnswer:
             r = await self.invoke(
                 raw.functions.account.GetPassword()
             )
-            password = utils.compute_password_check(r, password)
+            # Hashing the password runs in a thread, not on the event loop it would block
+            password = await utils.run_sync(utils.compute_password_check, r, password)
 
         return await self.invoke(
             raw.functions.messages.GetBotCallbackAnswer(

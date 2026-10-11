@@ -20,7 +20,7 @@
 
 import pyrogram
 from pyrogram import raw
-from pyrogram.utils import compute_password_check
+from pyrogram.utils import compute_password_check, run_sync
 
 
 class RemoveCloudPassword:
@@ -52,9 +52,12 @@ class RemoveCloudPassword:
         if not r.has_password:
             raise ValueError("There is no cloud password to remove")
 
+        # Hashing the password runs in a thread, not on the event loop it would block
+        password_check = await run_sync(compute_password_check, r, password)
+
         await self.invoke(
             raw.functions.account.UpdatePasswordSettings(
-                password=compute_password_check(r, password),
+                password=password_check,
                 new_settings=raw.types.account.PasswordInputSettings(
                     new_algo=raw.types.PasswordKdfAlgoUnknown(),
                     new_password_hash=b"",

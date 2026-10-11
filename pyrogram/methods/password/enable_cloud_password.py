@@ -20,7 +20,7 @@
 
 import pyrogram
 from pyrogram import raw
-from pyrogram.utils import compute_new_password_hash
+from pyrogram.utils import compute_new_password_hash, run_sync
 
 
 class EnableCloudPassword:
@@ -69,8 +69,9 @@ class EnableCloudPassword:
         if r.has_password:
             raise ValueError("There is already a cloud password enabled")
 
-        # The server's new_algo is checked before the new password is hashed with it
-        new_hash = compute_new_password_hash(r.new_algo, password)
+        # The server's new_algo is checked before the new password is hashed with it. Hashing runs in a thread, not
+        # on the event loop it would block.
+        new_hash = await run_sync(compute_new_password_hash, r.new_algo, password)
 
         await self.invoke(
             raw.functions.account.UpdatePasswordSettings(

@@ -20,7 +20,7 @@
 
 import pyrogram
 from pyrogram import raw
-from pyrogram.utils import compute_new_password_hash, compute_password_check
+from pyrogram.utils import compute_new_password_hash, compute_password_check, run_sync
 
 
 class ChangeCloudPassword:
@@ -64,12 +64,14 @@ class ChangeCloudPassword:
         if not r.has_password:
             raise ValueError("There is no cloud password to change")
 
-        # The server's new_algo is checked before the new password is hashed with it
-        new_hash = compute_new_password_hash(r.new_algo, new_password)
+        # The server's new_algo is checked before the new password is hashed with it. Hashing runs in a thread, not
+        # on the event loop it would block.
+        new_hash = await run_sync(compute_new_password_hash, r.new_algo, new_password)
+        password_check = await run_sync(compute_password_check, r, current_password)
 
         await self.invoke(
             raw.functions.account.UpdatePasswordSettings(
-                password=compute_password_check(r, current_password),
+                password=password_check,
                 new_settings=raw.types.account.PasswordInputSettings(
                     new_algo=r.new_algo,
                     new_password_hash=new_hash,

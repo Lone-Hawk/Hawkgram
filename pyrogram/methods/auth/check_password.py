@@ -23,7 +23,7 @@ import logging
 import pyrogram
 from pyrogram import raw
 from pyrogram import types
-from pyrogram.utils import compute_password_check
+from pyrogram.utils import compute_password_check, run_sync
 
 log = logging.getLogger(__name__)
 
@@ -47,12 +47,16 @@ class CheckPassword:
         Raises:
             BadRequest: In case the password is invalid.
         """
+        # Hashing the password (100000 PBKDF2 rounds) runs in a thread, not on the event loop it would block
+        password_check = await run_sync(
+            compute_password_check,
+            await self.invoke(raw.functions.account.GetPassword()),
+            password
+        )
+
         r = await self.invoke(
             raw.functions.auth.CheckPassword(
-                password=compute_password_check(
-                    await self.invoke(raw.functions.account.GetPassword()),
-                    password
-                )
+                password=password_check
             )
         )
 

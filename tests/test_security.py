@@ -22,6 +22,7 @@ import asyncio
 import os
 import random
 import stat
+import threading
 import time
 from hashlib import sha1, sha256
 from io import BytesIO
@@ -581,6 +582,57 @@ async def test_new_password_is_not_set_with_unsafe_parameters(tmp_path, method, 
             await client.change_cloud_password("password", "new password")
 
     assert not any(isinstance(r, raw.functions.account.UpdatePasswordSettings) for r in requests)
+
+
+PASSWORD_METHODS = {
+    "check_password": lambda client: client.check_password("password"),
+    "enable_cloud_password": lambda client: client.enable_cloud_password("new password"),
+    "change_cloud_password": lambda client: client.change_cloud_password("password", "new password"),
+    "remove_cloud_password": lambda client: client.remove_cloud_password("password"),
+    "transfer_chat_ownership": lambda client: client.transfer_chat_ownership(-100123, 5, "password"),
+    "request_callback_answer": lambda client: client.request_callback_answer("me", 1, "data", password="password"),
+}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method", PASSWORD_METHODS)
+async def test_password_hashing_does_not_block_the_event_loop(tmp_path, monkeypatch, method):
+    # 100000 PBKDF2 rounds took the event loop for a noticeable time: no other update or request could run meanwhile
+    loop_thread = threading.get_ident()
+    hashed_in = []
+    compute_password_hash = utils.compute_password_hash
+
+    def recording_compute_password_hash(*args):
+        hashed_in.append(threading.get_ident())
+        return compute_password_hash(*args)
+
+    monkeypatch.setattr(utils, "compute_password_hash", recording_compute_password_hash)
+
+    password = srp_password()
+    password.has_password = method in ("change_cloud_password", "remove_cloud_password")
+    client, requests = client_answering_password(tmp_path, password)
+    await client.storage.open()
+
+    async def invoke(query, *args, **kwargs):
+        requests.append(query)
+        if isinstance(query, raw.functions.account.GetPassword):
+            return password
+        if isinstance(query, raw.functions.auth.CheckPassword):
+            # Read back from bytes, like data received from Telegram
+            return TLObject.read(BytesIO(T.auth.Authorization(user=T.User(id=1)).write()))
+        return True
+
+    async def resolve_peer(peer_id):
+        if peer_id == -100123:
+            return T.InputPeerChannel(channel_id=123, access_hash=1)
+        return T.InputPeerUser(user_id=5, access_hash=1) if peer_id == 5 else T.InputPeerSelf()
+
+    client.invoke = invoke
+    client.resolve_peer = resolve_peer
+
+    await PASSWORD_METHODS[method](client)
+
+    assert hashed_in and loop_thread not in hashed_in
 
 
 @pytest.mark.asyncio
