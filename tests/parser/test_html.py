@@ -17,6 +17,8 @@
 #  You should have received a copy of the GNU Lesser General Public License
 #  along with Hawkgram.  If not, see <http://www.gnu.org/licenses/>.
 
+import pytest
+
 import pyrogram
 from pyrogram.parser.html import HTML
 
@@ -146,3 +148,55 @@ def test_html_unparse_no_entities():
     entities = []
 
     assert HTML.unparse(text=text, entities=entities) == expected
+
+
+# Text from other users must stay literal when the unparsed HTML is sent again with HTML parsing
+
+def test_html_unparse_escapes_text_without_entities():
+    expected = "&lt;b&gt;not bold&lt;/b&gt; &amp; &lt;a href=\"tg://user?id=1\"&gt;x&lt;/a&gt;"
+    text = "<b>not bold</b> & <a href=\"tg://user?id=1\">x</a>"
+
+    assert HTML.unparse(text=text, entities=pyrogram.types.List()) == expected
+    assert HTML.unparse(text=text, entities=None) == expected
+
+
+def test_html_unparse_escapes_text_outside_entities():
+    expected = "&lt;i&gt;a&lt;/i&gt; <b>bold</b> &lt;b&gt;x&lt;/b&gt;"
+    text = "<i>a</i> bold <b>x</b>"
+    entities = pyrogram.types.List(
+        [pyrogram.types.MessageEntity(type=pyrogram.enums.MessageEntityType.BOLD, offset=9, length=4)])
+
+    assert HTML.unparse(text=text, entities=entities) == expected
+
+
+def test_html_unparse_escapes_attributes():
+    language = 'x"><a href="tg://user?id=1">'
+    url = 'https://example.com/"><b>'
+    text = "code link"
+    entities = pyrogram.types.List(
+        [pyrogram.types.MessageEntity(type=pyrogram.enums.MessageEntityType.PRE, offset=0, length=4,
+                                      language=language),
+         pyrogram.types.MessageEntity(type=pyrogram.enums.MessageEntityType.TEXT_LINK, offset=5, length=4, url=url)])
+
+    expected = (
+        '<pre language="x&quot;&gt;&lt;a href=&quot;tg://user?id=1&quot;&gt;">code</pre> '
+        '<a href="https://example.com/&quot;&gt;&lt;b&gt;">link</a>'
+    )
+
+    assert HTML.unparse(text=text, entities=entities) == expected
+
+
+@pytest.mark.asyncio
+async def test_html_unparse_round_trips_markup_in_text():
+    language = 'x"><a href="tg://user?id=1">'
+    text = "<b>a</b> code \U0001f600 <i>"
+    entities = pyrogram.types.List(
+        [pyrogram.types.MessageEntity(type=pyrogram.enums.MessageEntityType.PRE, offset=9, length=4,
+                                      language=language)])
+
+    parsed = await HTML(None).parse(HTML.unparse(text=text, entities=entities))
+
+    assert parsed["message"] == text
+    assert [type(e) for e in parsed["entities"]] == [pyrogram.raw.types.MessageEntityPre]
+    assert (parsed["entities"][0].offset, parsed["entities"][0].length) == (9, 4)
+    assert parsed["entities"][0].language == language

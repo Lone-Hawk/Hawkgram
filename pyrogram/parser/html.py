@@ -178,7 +178,8 @@ class HTML:
             elif entity_type == MessageEntityType.PRE:
                 name = entity_type.name.lower()
                 language = getattr(entity, "language", "") or ""
-                start_tag = f'<{name} language="{language}">' if language else f"<{name}>"
+                # The language is free text chosen by the sender: it must not be able to close the attribute
+                start_tag = f'<{name} language="{html.escape(language)}">' if language else f"<{name}>"
                 end_tag = f"</{name}>"
             elif entity_type == MessageEntityType.EXPANDABLE_BLOCKQUOTE:
                 name = "blockquote"
@@ -194,7 +195,7 @@ class HTML:
                 end_tag = f"</{name}>"
             elif entity_type == MessageEntityType.TEXT_LINK:
                 url = entity.url
-                start_tag = f'<a href="{url}">'
+                start_tag = f'<a href="{html.escape(url)}">'
                 end_tag = "</a>"
             elif entity_type == MessageEntityType.TEXT_MENTION:
                 user = entity.user
@@ -233,18 +234,23 @@ class HTML:
         entities_offsets = []
 
         # probably useless because entities are already sorted by telegram
-        entities.sort(key=lambda e: (e.offset, -e.length))
+        entities = sorted(entities or [], key=lambda e: (e.offset, -e.length))
 
         # main loop for first-level entities
         i = 0
         while i < len(entities):
             i += recursive(i)
 
-        if entities_offsets:
-            last_offset = entities_offsets[-1][1]
-            # no need to sort, but still add entities starting from the end
-            for entity, offset in reversed(entities_offsets):
-                text = text[:offset] + entity + html.escape(text[offset:last_offset]) + text[last_offset:]
-                last_offset = offset
+        # Every piece of text is escaped, including the parts before, between and after the entities: the text comes
+        # from other users, and markup in it must stay literal when the result is sent again with HTML parsing
+        parts = []
+        last_offset = len(text)
 
-        return utils.remove_surrogates(text)
+        for tag, offset in reversed(entities_offsets):
+            parts.append(html.escape(text[offset:last_offset], quote=False))
+            parts.append(tag)
+            last_offset = offset
+
+        parts.append(html.escape(text[:last_offset], quote=False))
+
+        return utils.remove_surrogates("".join(reversed(parts)))

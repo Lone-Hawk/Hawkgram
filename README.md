@@ -52,6 +52,13 @@ Hawkgram keeps the `pyrogram` import name, so existing code keeps working unchan
 
 ### Changelog
 
+#### Hawkgram 1.0.9 (unreleased): HTML output escaping
+
+- **`Message.text.html` and `.caption.html` escape all of the text.** Text before, after or outside of any formatting
+  was returned as is, so a user who typed `<b>` or `<a href="tg://user?id=…">` got real formatting and mentions when a
+  bot sent the result again with HTML parsing (and HTML injection if it was shown on a web page). A code block's
+  language and a link's URL are now escaped too, so they can't break out of their attribute.
+
 #### Hawkgram 1.0.8: folder links
 
 - **`export_folder_link` returns the new link.** It raised `NameError` after Telegram had already created the link,
