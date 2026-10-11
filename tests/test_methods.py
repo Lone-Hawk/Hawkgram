@@ -307,3 +307,49 @@ async def test_short_message_is_dispatched_from_the_difference(client):
 
     update, users, chats = client.dispatcher.updates_queue.get_nowait()
     assert isinstance(update, T.UpdateNewMessage) and update.message.id == 5
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# leave_chat drops the channel's update state, by its id, once it has been left
+# ---------------------------------------------------------------------------------------------------------------
+
+async def client_with_channel_state(client):
+    await client.storage.open()
+    await client.storage.update_state((CHANNEL_ID, 5, None, 1, None))
+    await client.storage.update_state((0, 9, None, 1, None))
+
+    async def resolve_peer(peer_id):
+        return T.InputPeerChannel(channel_id=CHANNEL_RAW_ID, access_hash=9)
+
+    client.resolve_peer = resolve_peer
+
+    return client
+
+
+async def state_ids(client):
+    return sorted(state[0] for state in await client.storage.update_state())
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("chat_id", [CHANNEL_ID, "@channel", "https://t.me/channel"])
+async def test_leave_chat_removes_the_channel_state(client, chat_id):
+    # The state was looked up by chat_id as given, and only with skip_updates=False (the default is True)
+    client = await client_with_channel_state(client)
+    client.responses = [updates()]
+
+    await client.leave_chat(chat_id)
+
+    assert isinstance(client.requests[0], raw.functions.channels.LeaveChannel)
+    assert await state_ids(client) == [0]
+
+
+@pytest.mark.asyncio
+async def test_leave_chat_keeps_the_state_when_leaving_fails(client):
+    client = await client_with_channel_state(client)
+    client.skip_updates = False
+    client.responses = [errors.ChannelPrivate()]
+
+    with pytest.raises(errors.ChannelPrivate):
+        await client.leave_chat(CHANNEL_ID)
+
+    assert await state_ids(client) == [CHANNEL_ID, 0]

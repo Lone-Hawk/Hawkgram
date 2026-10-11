@@ -21,7 +21,7 @@
 from typing import Union
 
 import pyrogram
-from pyrogram import raw
+from pyrogram import raw, utils
 
 
 class LeaveChat:
@@ -54,15 +54,19 @@ class LeaveChat:
                 await app.leave_chat(chat_id, delete=True)
         """
         peer = await self.resolve_peer(chat_id)
-        if not self.skip_updates:
-            await self.storage.remove_state(chat_id)
 
         if isinstance(peer, raw.types.InputPeerChannel):
-            return await self.invoke(
+            r = await self.invoke(
                 raw.functions.channels.LeaveChannel(
                     channel=await self.resolve_peer(chat_id)
                 )
             )
+
+            # The channel's update state is stored under its id (chat_id may be a username or a link), and is only
+            # dropped once the channel has been left. States are stored whatever skip_updates is.
+            await self.storage.remove_state(utils.get_peer_id(peer))
+
+            return r
         elif isinstance(peer, raw.types.InputPeerChat):
             r = await self.invoke(
                 raw.functions.messages.DeleteChatUser(
