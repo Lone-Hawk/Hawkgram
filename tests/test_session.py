@@ -19,11 +19,12 @@
 """Session.send: answers that make the request be sent again"""
 
 import os
+from types import SimpleNamespace
 
 import pytest
 
 from pyrogram import raw
-from pyrogram.errors import BadMsgNotification
+from pyrogram.errors import BadMsgNotification, FloodWait
 from pyrogram.session import Session
 
 T = raw.types
@@ -91,3 +92,28 @@ async def test_repeated_bad_msg_notifications_are_raised():
 
     assert len(session.connection.sent_msg_ids) == 3
     assert session.results == {}
+
+
+@pytest.mark.asyncio
+async def test_retries_keep_the_callers_sleep_threshold():
+    session = make_session([])
+    session.client = SimpleNamespace(name="test")
+    session.is_started.set()
+    answers = [OSError("connection reset"), FloodWait(value=1), T.Pong(msg_id=0, ping_id=1)]
+
+    async def send(query, *args, **kwargs):
+        answer = answers.pop(0)
+
+        if isinstance(answer, Exception):
+            raise answer
+
+        return answer
+
+    session.send = send
+
+    # sleep_threshold=0 means "never wait for a flood wait": the retry after the network error used to wait anyway,
+    # with the default threshold
+    with pytest.raises(FloodWait):
+        await session.invoke(raw.functions.Ping(ping_id=1), sleep_threshold=0)
+
+    assert len(answers) == 1

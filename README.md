@@ -87,6 +87,8 @@ Hawkgram keeps the `pyrogram` import name, so existing code keeps working unchan
   slower and could run into Telegram's rate limits. One connection per data center is now kept until the client stops,
   and shared with inline message edits. A connection whose login to another data center failed is no longer kept
   (inline edits on that data center used to keep failing).
+- `sleep_threshold` passed to `invoke` now also applies after a request was retried because of a network error;
+  the retry used to fall back to the default threshold and wait out flood waits you asked to receive.
 
 #### Hawkgram 1.0.8: folder links
 

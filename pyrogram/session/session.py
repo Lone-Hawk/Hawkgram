@@ -444,4 +444,5 @@ class Session:
 
                 await asyncio.sleep(0.5)
 
-                return await self.invoke(query, retries - 1, timeout)
+                # The caller's sleep_threshold applies to the retries too, not only to the first attempt
+                return await self.invoke(query, retries - 1, timeout, sleep_threshold)
