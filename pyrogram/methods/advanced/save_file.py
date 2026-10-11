@@ -30,7 +30,6 @@ from pathlib import PurePath
 from typing import Union, BinaryIO, Callable
 
 import pyrogram
-from pyrogram import StopTransmission
 from pyrogram import raw
 
 log = logging.getLogger(__name__)
@@ -128,10 +127,22 @@ class SaveFile:
                     if data is None:
                         return
 
+                    # Once a part has failed the upload is failing: the rest are only taken off the queue, so that
+                    # putting parts on it never blocks
+                    if errors:
+                        continue
+
                     try:
                         await session.invoke(data)
                     except Exception as e:
-                        log.exception(e)
+                        errors.append(e)
+
+            async def stop_workers():
+                for _ in workers:
+                    await queue.put(None)
+
+                await asyncio.gather(*workers)
+                workers.clear()
 
             part_size = 512 * 1024
 
@@ -164,12 +175,13 @@ class SaveFile:
             file_id = file_id or self.rnd_id()
             md5_sum = md5() if not is_big and not is_missing_part else None
             workers = []
+            errors = []
             queue = asyncio.Queue(1)
 
             try:
                 # One media session per DC is kept for all transfers (see Client._get_media_session)
                 session = await self._get_media_session(await self.storage.dc_id())
-                workers = [self.loop.create_task(worker(session)) for _ in range(workers_count)]
+                workers.extend(self.loop.create_task(worker(session)) for _ in range(workers_count))
 
                 fp.seek(part_size * file_part)
 
@@ -197,8 +209,13 @@ class SaveFile:
 
                     await queue.put(rpc)
 
+                    # A part that failed fails the upload. Errors used to be logged and the upload to go on, giving
+                    # a file with missing parts, or None.
+                    if errors:
+                        raise errors[0]
+
                     if is_missing_part:
-                        return
+                        break
 
                     if not is_big and not is_missing_part:
                         md5_sum.update(chunk)
@@ -217,11 +234,16 @@ class SaveFile:
                             await func()
                         else:
                             await self.loop.run_in_executor(self.executor, func)
-            except StopTransmission:
-                raise
-            except Exception as e:
-                log.exception(e)
-            else:
+
+                # Every part has to be uploaded before the file can be used
+                await stop_workers()
+
+                if errors:
+                    raise errors[0]
+
+                if is_missing_part:
+                    return None
+
                 if is_big:
                     return raw.types.InputFileBig(
                         id=file_id,
@@ -237,10 +259,7 @@ class SaveFile:
                         md5_checksum=md5_sum
                     )
             finally:
-                for _ in workers:
-                    await queue.put(None)
-
-                await asyncio.gather(*workers)
+                await stop_workers()
 
                 if isinstance(path, (str, PurePath)):
                     fp.close()

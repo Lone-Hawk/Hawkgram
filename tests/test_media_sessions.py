@@ -27,7 +27,7 @@ import pytest_asyncio
 
 import pyrogram
 from pyrogram import raw
-from pyrogram.errors import AuthBytesInvalid
+from pyrogram.errors import AuthBytesInvalid, FilePartInvalid
 from pyrogram.file_id import FileId, FileType
 from pyrogram.methods.messages.inline_session import get_session
 
@@ -40,10 +40,12 @@ OTHER_DC = 4
 class FakeDcSession:
     """A media session to one DC: imports authorizations, serves file parts and accepts uploaded parts"""
 
-    def __init__(self, client, dc_id, auth_key, test_mode, is_media=False, is_cdn=False, import_errors=0):
+    def __init__(self, client, dc_id, auth_key, test_mode, is_media=False, is_cdn=False, import_errors=0,
+                 setup=None):
         self.dc_id = dc_id
         self.auth_key = auth_key
         self.import_errors = import_errors
+        self.setup = setup
         self.requests = []
         self.started = self.stopped = False
 
@@ -66,6 +68,13 @@ class FakeDcSession:
         if isinstance(query, raw.functions.upload.GetFile):
             return T.upload.File(type=T.storage.FileUnknown(), mtime=0, bytes=b"data")
 
+        if isinstance(query, (raw.functions.upload.SaveFilePart, raw.functions.upload.SaveBigFilePart)):
+            # Parts are sent concurrently by several workers
+            await asyncio.sleep(0)
+
+            if self.setup is not None and query.file_part == self.setup.fail_part:
+                raise FilePartInvalid()
+
         return True
 
 
@@ -78,9 +87,10 @@ class Setup:
         self.auth_keys_created = 0
         self.exports = 0
         self.import_errors = import_errors
+        self.fail_part = None
 
         def new_session(*args, **kwargs):
-            session = FakeDcSession(*args, import_errors=self.import_errors, **kwargs)
+            session = FakeDcSession(*args, import_errors=self.import_errors, setup=self, **kwargs)
             self.sessions.append(session)
             return session
 
@@ -204,3 +214,61 @@ async def test_authorization_is_retried(setup):
 
     assert setup.exports == 3
     assert setup.client.media_sessions == {OTHER_DC: session}
+
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Uploads fail when a part fails
+# ---------------------------------------------------------------------------------------------------------------
+
+def uploaded_parts(session):
+    return sorted(r.file_part for r in session.requests if hasattr(r, "file_part"))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("size, fail_part", [
+    (3 * 512 * 1024, 1),  # small file, one worker
+    (11 * 1024 * 1024, 7),  # big file, four workers
+], ids=["small", "big"])
+async def test_upload_with_a_failed_part_raises(setup, tmp_path, size, fail_part):
+    setup.client.me = SimpleNamespace(is_premium=False)
+    setup.fail_part = fail_part
+    path = tmp_path / "video.mp4"
+    path.write_bytes(bytes(size))
+
+    # The error used to be logged and the upload to return a file with a missing part (or None)
+    with pytest.raises(FilePartInvalid):
+        await setup.client.save_file(str(path))
+
+    # The file opened from the path is closed: it can be deleted, also on Windows
+    path.unlink()
+
+
+@pytest.mark.asyncio
+async def test_failed_missing_part_upload_raises(setup):
+    setup.client.me = SimpleNamespace(is_premium=False)
+    setup.fail_part = 2
+
+    with pytest.raises(FilePartInvalid):
+        await setup.client.save_file(BytesIO(bytes(3 * 512 * 1024)), file_id=123, file_part=2)
+
+
+@pytest.mark.asyncio
+async def test_missing_part_upload_sends_only_that_part(setup):
+    setup.client.me = SimpleNamespace(is_premium=False)
+
+    assert await setup.client.save_file(BytesIO(bytes(3 * 512 * 1024)), file_id=123, file_part=2) is None
+
+    (session,) = setup.sessions
+    assert uploaded_parts(session) == [2]
+
+
+@pytest.mark.asyncio
+async def test_big_upload_sends_every_part(setup):
+    setup.client.me = SimpleNamespace(is_premium=False)
+
+    uploaded = await setup.client.save_file(BytesIO(bytes(11 * 1024 * 1024)))
+
+    assert isinstance(uploaded, T.InputFileBig) and uploaded.parts == 22
+    (session,) = setup.sessions
+    assert uploaded_parts(session) == list(range(22))

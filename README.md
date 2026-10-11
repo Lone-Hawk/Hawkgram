@@ -64,6 +64,10 @@ Hawkgram keeps the `pyrogram` import name, so existing code keeps working unchan
   from Telegram) or a part from Telegram's CDN failed its integrity check, `download_media` saved what it had as if
   it were the whole file and returned its path. It now deletes the partial file, logs the error and returns `None`,
   as documented. `stream_media` raises the error instead of silently ending early.
+- **Failed uploads raise their error.** When a part of a file couldn't be uploaded (a lost connection, an error
+  from Telegram such as a flood wait), the error was only logged: the upload went on and `save_file` returned a
+  file with a missing part, or `None`, so `send_document` and the other send methods failed later with an
+  unrelated error. The upload now stops and the error is raised.
 - **Requests retried after a `BadMsgNotification` return their real result.** The notification itself was returned
   as the answer, so the method failed with an unrelated error (or `IndexError`) even when the retry worked. If the
   server keeps rejecting the request, `BadMsgNotification` is raised.
