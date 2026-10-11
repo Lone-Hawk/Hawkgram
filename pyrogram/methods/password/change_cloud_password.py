@@ -18,11 +18,9 @@
 #  You should have received a copy of the GNU Lesser General Public License
 #  along with Hawkgram.  If not, see <http://www.gnu.org/licenses/>.
 
-import os
-
 import pyrogram
 from pyrogram import raw
-from pyrogram.utils import compute_password_hash, compute_password_check, btoi, itob
+from pyrogram.utils import compute_new_password_hash, compute_password_check
 
 
 class ChangeCloudPassword:
@@ -66,9 +64,8 @@ class ChangeCloudPassword:
         if not r.has_password:
             raise ValueError("There is no cloud password to change")
 
-        r.new_algo.salt1 += os.urandom(32)
-        new_hash = btoi(compute_password_hash(r.new_algo, new_password))
-        new_hash = itob(pow(r.new_algo.g, new_hash, btoi(r.new_algo.p)))
+        # The server's new_algo is checked before the new password is hashed with it
+        new_hash = compute_new_password_hash(r.new_algo, new_password)
 
         await self.invoke(
             raw.functions.account.UpdatePasswordSettings(

@@ -529,6 +529,72 @@ def test_srp_rejects_unsafe_parameters(password):
         utils.compute_password_check(password, "password")
 
 
+def test_new_password_hash_with_telegram_parameters():
+    algo = srp_password().new_algo
+    new_hash = utils.compute_new_password_hash(algo, "new password")
+
+    assert algo.salt1.startswith(b"salt1") and len(algo.salt1) == 5 + 32
+    x = utils.btoi(utils.compute_password_hash(algo, "new password"))
+    assert new_hash == utils.itob(pow(3, x, prime.CURRENT_DH_PRIME))
+
+
+UNSAFE_NEW_ALGOS = [
+    srp_password(p=prime.CURRENT_DH_PRIME - 2).new_algo,
+    srp_password(g=2).new_algo,
+    T.PasswordKdfAlgoUnknown(),
+]
+
+
+@pytest.mark.parametrize("algo", UNSAFE_NEW_ALGOS)
+def test_new_password_hash_rejects_unsafe_parameters(algo):
+    with pytest.raises(SecurityCheckMismatch):
+        utils.compute_new_password_hash(algo, "new password")
+
+
+def client_answering_password(tmp_path, password):
+    client = make_client(tmp_path)
+    requests = []
+
+    async def invoke(query, *args, **kwargs):
+        requests.append(query)
+        return password if isinstance(query, raw.functions.account.GetPassword) else True
+
+    client.invoke = invoke
+
+    return client, requests
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("algo", UNSAFE_NEW_ALGOS)
+@pytest.mark.parametrize("method", ["enable", "change"])
+async def test_new_password_is_not_set_with_unsafe_parameters(tmp_path, method, algo):
+    # The new password used to be hashed with whatever new_algo the server sent, and sent
+    password = srp_password()
+    password.new_algo = algo
+    password.has_password = method == "change"
+    client, requests = client_answering_password(tmp_path, password)
+
+    with pytest.raises(SecurityCheckMismatch):
+        if method == "enable":
+            await client.enable_cloud_password("new password")
+        else:
+            await client.change_cloud_password("password", "new password")
+
+    assert not any(isinstance(r, raw.functions.account.UpdatePasswordSettings) for r in requests)
+
+
+@pytest.mark.asyncio
+async def test_new_password_is_set_with_telegram_parameters(tmp_path):
+    client, requests = client_answering_password(tmp_path, srp_password())
+
+    assert await client.enable_cloud_password("new password", hint="hint") is True
+
+    update = requests[-1]
+    assert isinstance(update, raw.functions.account.UpdatePasswordSettings)
+    assert len(update.new_settings.new_password_hash) == 256
+    assert len(update.new_settings.new_algo.salt1) == 5 + 32
+
+
 # ---------------------------------------------------------------------------------------------------------------
 # Auth key exchange against a fake Telegram server
 # ---------------------------------------------------------------------------------------------------------------

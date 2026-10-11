@@ -510,6 +510,27 @@ def compute_password_hash(
     return sha256(algo.salt2 + hash3 + algo.salt2)
 
 
+def compute_new_password_hash(
+    algo: "raw.base.PasswordKdfAlgo",
+    password: str
+) -> bytes:
+    """Compute the hash of a new 2FA password: the SRP verifier g^x mod p that Telegram stores.
+
+    The server's parameters are checked like in compute_password_check(): with a weak prime or generator the stored
+    verifier could reveal the password. As required, 32 random bytes are appended to ``algo.salt1``, so *algo* must
+    be sent along with the hash.
+    """
+    if not isinstance(algo, raw.types.PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow):
+        raise SecurityCheckMismatch("Unknown 2FA password algorithm received from the server")
+
+    if btoi(algo.p) != CURRENT_DH_PRIME or algo.g not in (3, 4, 5, 7):
+        raise SecurityCheckMismatch("Unknown 2FA (SRP) parameters received from the server")
+
+    algo.salt1 += os.urandom(32)
+
+    return itob(pow(algo.g, btoi(compute_password_hash(algo, password)), CURRENT_DH_PRIME))
+
+
 # noinspection PyPep8Naming
 def compute_password_check(
     r: raw.types.account.Password,

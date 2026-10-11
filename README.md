@@ -105,6 +105,8 @@ Hawkgram keeps the `pyrogram` import name, so existing code keeps working unchan
   allow (`<>:"|?*`) made the download fail, trailing dots and spaces were silently dropped, and device names such as
   `CON` or `NUL.zip` sent the file to a device; these names are now adjusted. Two downloads with the same name at the
   same time no longer share a temporary file (one used to fail or truncate the other).
+- `enable_cloud_password` and `change_cloud_password` check the server's parameters for the new 2FA password, like
+  logging in already did, and refuse unknown or unsafe ones instead of hashing the new password with them.
 
 #### Hawkgram 1.0.8: folder links
 
