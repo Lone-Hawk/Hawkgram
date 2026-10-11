@@ -52,6 +52,14 @@ Hawkgram keeps the `pyrogram` import name, so existing code keeps working unchan
 
 ### Changelog
 
+#### Hawkgram 1.0.8 (unreleased): folder links
+
+- **`export_folder_link` returns the new link.** It raised `NameError` after Telegram had already created the link,
+  so the call failed even though the link existed.
+- **Folder links share the right chats.** A folder's pinned and included chats are each shared once, and its excluded
+  chats never are. Folders with excluded or pinned chats used to send their included chats two or three times, and
+  pinned chats were left out of the link.
+
 #### Hawkgram 1.0.7: Python 3.14 event loops
 
 - **A client created outside of a running event loop works with `asyncio.run`.** A client defined at module level
