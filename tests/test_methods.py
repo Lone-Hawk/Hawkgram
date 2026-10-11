@@ -18,10 +18,12 @@
 
 """Regression tests for Client methods, with requests and answers going through FakeClient"""
 
+from types import SimpleNamespace
+
 import pytest
 
-from pyrogram import raw
-from .test_layer_229 import FakeClient, USER_ID, CHANNEL_ID, CHANNEL_RAW_ID
+from pyrogram import raw, types
+from .test_layer_229 import FakeClient, USER_ID, CHANNEL_ID, CHANNEL_RAW_ID, updates
 
 T = raw.types
 
@@ -105,3 +107,76 @@ async def test_delete_messages_in_channels_names_the_channel(client):
     assert isinstance(delete, raw.functions.channels.DeleteMessages)
     assert delete.channel == T.InputPeerChannel(channel_id=CHANNEL_RAW_ID, access_hash=9)
     assert delete.id == [5, 6]
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# send_payment_form doesn't fail after the stars are spent
+# ---------------------------------------------------------------------------------------------------------------
+
+def raw_photo():
+    return T.Photo(id=1, access_hash=2, file_reference=b"", date=1, dc_id=2,
+                   sizes=[T.PhotoSize(type="x", w=10, h=10, size=100)])
+
+
+def raw_document(*attributes):
+    return T.Document(id=3, access_hash=4, file_reference=b"", date=1, mime_type="video/mp4", size=1000, dc_id=2,
+                      attributes=list(attributes))
+
+
+def extended_media(*medias, msg_id=1):
+    return T.UpdateMessageExtendedMedia(peer=T.PeerUser(user_id=USER_ID), msg_id=msg_id, extended_media=list(medias))
+
+
+def bought(media):
+    return T.MessageExtendedMedia(media=media)
+
+
+async def pay(client, result):
+    async def get_payment_form(**kwargs):
+        return SimpleNamespace(id=42)
+
+    client.get_payment_form = get_payment_form
+    client.responses = [result]
+
+    medias = await client.send_payment_form(invoice_link="https://t.me/$slug")
+
+    # The form was paid exactly once
+    (request,) = client.requests
+    assert isinstance(request, raw.functions.payments.SendStarsForm) and request.form_id == 42
+
+    return medias
+
+
+@pytest.mark.asyncio
+async def test_send_payment_form_returns_every_bought_media(client):
+    video = raw_document(T.DocumentAttributeVideo(duration=1, w=10, h=10), T.DocumentAttributeFilename(file_name="v.mp4"))
+    result = T.payments.PaymentResult(updates=updates(
+        T.UpdateConfig(),
+        extended_media(bought(T.MessageMediaPhoto(photo=raw_photo())), msg_id=1),
+        extended_media(bought(T.MessageMediaDocument(document=video)), msg_id=2),
+    ))
+
+    medias = await pay(client, result)
+
+    # Only the first update with media used to be read
+    assert [type(m) for m in medias] == [types.Photo, types.Video]
+    assert medias[1].file_name == "v.mp4"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("result", [
+    # An invoice that isn't for paid media (used to return None)
+    T.payments.PaymentResult(updates=updates(T.UpdateConfig())),
+    # A single update (used to raise AttributeError)
+    T.payments.PaymentResult(updates=T.UpdateShort(update=T.UpdateConfig(), date=1)),
+    # Media still shown as a preview (used to raise AttributeError)
+    T.payments.PaymentResult(updates=updates(extended_media(T.MessageExtendedMediaPreview(w=10, h=10)))),
+    # A document that isn't a video (used to raise KeyError)
+    T.payments.PaymentResult(updates=updates(extended_media(bought(T.MessageMediaDocument(
+        document=raw_document(T.DocumentAttributeFilename(file_name="a.zip"))
+    ))))),
+], ids=["no-media", "update-short", "preview", "not-a-video"])
+async def test_send_payment_form_does_not_fail_after_paying(client, result):
+    medias = await pay(client, result)
+
+    assert isinstance(medias, types.List) and list(medias) == []

@@ -53,6 +53,7 @@ class SendPaymentForm:
 
         Returns:
             List of :obj:`~pyrogram.types.Photo` | :obj:`~pyrogram.types.Video`: On success, the list of bought photos and videos is returned.
+            The list is empty when the invoice isn't for paid media.
 
         Example:
             .. code-block:: python
@@ -96,29 +97,44 @@ class SendPaymentForm:
         )
         # TODO: Add support for regular invoices (credentials)
 
+        # The stars are spent at this point: an error below would make a caller retry the "failed" call and pay again.
+        # Every update is looked at, and anything that isn't a bought photo or video is skipped instead of raising.
         medias = []
 
         if isinstance(r, raw.types.payments.PaymentResult):
-            for i in r.updates.updates:
-                if isinstance(i, raw.types.UpdateMessageExtendedMedia):
-                    for ext_media in i.extended_media:
-                        media = ext_media.media
+            updates = getattr(r.updates, "updates", None)
 
-                        if isinstance(media, raw.types.MessageMediaPhoto):
+            if updates is None:
+                updates = [getattr(r.updates, "update", None)]
+
+            for update in updates:
+                if not isinstance(update, raw.types.UpdateMessageExtendedMedia):
+                    continue
+
+                for ext_media in update.extended_media:
+                    # Media that hasn't been bought (yet) is only a preview, without the media itself
+                    media = getattr(ext_media, "media", None)
+
+                    if isinstance(media, raw.types.MessageMediaPhoto):
+                        if isinstance(media.photo, raw.types.Photo):
                             medias.append(types.Photo._parse(self, media.photo))
-                        elif isinstance(media, raw.types.MessageMediaDocument):
-                            doc = media.document
+                    elif isinstance(media, raw.types.MessageMediaDocument):
+                        doc = media.document
 
-                            attributes = {type(i): i for i in doc.attributes}
+                        if not isinstance(doc, raw.types.Document):
+                            continue
 
-                            file_name = getattr(
-                                attributes.get(
-                                    raw.types.DocumentAttributeFilename, None
-                                ), "file_name", None
-                            )
+                        attributes = {type(i): i for i in doc.attributes}
 
-                            video_attributes = attributes[raw.types.DocumentAttributeVideo]
+                        file_name = getattr(
+                            attributes.get(
+                                raw.types.DocumentAttributeFilename, None
+                            ), "file_name", None
+                        )
 
+                        video_attributes = attributes.get(raw.types.DocumentAttributeVideo)
+
+                        if video_attributes is not None:
                             medias.append(types.Video._parse(self, doc, video_attributes, file_name))
 
-                    return types.List(medias)
+            return types.List(medias)

@@ -71,6 +71,10 @@ Hawkgram keeps the `pyrogram` import name, so existing code keeps working unchan
   sequence of message ids, and Telegram's delete request for them names no chat, so `delete_messages(chat_id, 6)`
   deleted message 6 wherever it was. A bot that checked a user's rights in one group could be made to delete a
   message in another. Ids of messages in other chats are now ignored (this costs one extra request).
+- **`send_payment_form` no longer fails after the stars are spent.** Reading the result raised `AttributeError` or
+  `KeyError` for some answers, or returned `None`, although the payment had gone through, so a caller retrying the
+  "failed" call paid again. It now always returns the list of bought photos and videos, which is empty when the
+  invoice isn't for paid media, and it reads all of them instead of only the first message's.
 
 #### Hawkgram 1.0.8: folder links
 
