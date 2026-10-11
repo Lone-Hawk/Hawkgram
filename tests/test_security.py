@@ -180,7 +180,8 @@ async def test_failed_download_is_not_saved(tmp_path, monkeypatch):
 
     assert result is None
     assert list(directory.iterdir()) == []
-    assert session.stopped
+    # The media session is kept for the next transfers (see test_media_sessions.py)
+    assert client.media_sessions == {2: session} and not session.stopped
 
 
 @pytest.mark.asyncio
@@ -194,7 +195,7 @@ async def test_failed_download_is_raised_to_streams(tmp_path, monkeypatch):
             chunks.append(chunk)
 
     assert len(chunks) == 1
-    assert session.stopped
+    assert client.media_sessions == {2: session} and not session.stopped
 
 
 @pytest.mark.asyncio
@@ -217,16 +218,22 @@ async def test_cdn_chunk_failing_its_hash_check_is_not_saved(tmp_path, monkeypat
     )
     wrong_hash = T.FileHash(offset=0, limit=CHUNK_SIZE, hash=bytes(32))
 
-    def sessions():
-        return FakeMediaSession([redirect, [wrong_hash]]), FakeMediaSession([T.upload.CdnFile(bytes=tampered)])
+    session = FakeMediaSession([])
+    cdn_session = FakeMediaSession([])
+    client = await client_with_media_sessions(tmp_path, monkeypatch, session, cdn_session)
 
-    client = await client_with_media_sessions(tmp_path, monkeypatch, *sessions())
+    def answer():
+        session.answers = [redirect, [wrong_hash]]
+        cdn_session.answers = [T.upload.CdnFile(bytes=tampered)]
+
+    answer()
 
     with pytest.raises(CDNFileHashMismatch):
         async for _ in client.get_file(document_file_id(), len(tampered)):
             pass
 
-    use_media_sessions(monkeypatch, *sessions())
+    # The same (kept) sessions serve the download
+    answer()
     directory = tmp_path / "downloads"
 
     result = await client.handle_download(
@@ -235,6 +242,8 @@ async def test_cdn_chunk_failing_its_hash_check_is_not_saved(tmp_path, monkeypat
 
     assert result is None
     assert list(directory.iterdir()) == []
+    assert session.answers == [] and cdn_session.answers == []
+    assert client.media_sessions == {2: session, ("cdn", 2): cdn_session}
 
 
 # ---------------------------------------------------------------------------------------------------------------

@@ -82,6 +82,11 @@ Hawkgram keeps the `pyrogram` import name, so existing code keeps working unchan
 - **Busy clients write their session file far less often.** Every incoming update was committed (and synced to disk)
   to the `.session` file on its own, several times, blocking the client meanwhile. Peers and update states are now
   committed together at most once a second, and when the client stops.
+- **Downloads and uploads reuse their connections.** Every file opened a new connection, and a file stored in
+  another data center also needed a new encryption key and a new login there, every time, which made each transfer
+  slower and could run into Telegram's rate limits. One connection per data center is now kept until the client stops,
+  and shared with inline message edits. A connection whose login to another data center failed is no longer kept
+  (inline edits on that data center used to keep failing).
 
 #### Hawkgram 1.0.8: folder links
 
