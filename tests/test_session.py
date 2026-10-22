@@ -18,6 +18,7 @@
 
 """Session.send: answers that make the request be sent again"""
 
+import asyncio
 import os
 import time
 from types import SimpleNamespace
@@ -25,7 +26,7 @@ from types import SimpleNamespace
 import pytest
 
 from pyrogram import raw
-from pyrogram.errors import BadMsgNotification, FloodWait
+from pyrogram.errors import BadMsgNotification, FloodWait, InternalServerError, ServiceUnavailable
 from pyrogram.raw.core import Message
 from pyrogram.session import Session
 from pyrogram.session.internals import MsgId
@@ -122,6 +123,86 @@ async def test_retries_keep_the_callers_sleep_threshold():
 
     assert len(answers) == 1
 
+
+# ---------------------------------------------------------------------------------------------------------------
+# Payments are never sent again when it isn't known whether they went through
+# ---------------------------------------------------------------------------------------------------------------
+
+class SilentConnection:
+    """Takes every request and never answers, like a connection lost after the request went out"""
+
+    def __init__(self):
+        self.sent = 0
+
+    async def send(self, payload):
+        self.sent += 1
+
+
+def silent_session():
+    session = make_session([])
+    session.connection = SilentConnection()
+    session.client = SimpleNamespace(name="test")
+    session.is_started.set()
+
+    return session
+
+
+def send_stars_form():
+    return raw.functions.payments.SendStarsForm(form_id=1, invoice=T.InputInvoiceSlug(slug="slug"))
+
+
+payment_requests = pytest.mark.parametrize("query", [
+    send_stars_form(),
+    raw.functions.InvokeWithoutUpdates(query=send_stars_form()),
+    raw.functions.InvokeWithBusinessConnection(connection_id="connection", query=send_stars_form()),
+    raw.functions.payments.RefundStarsCharge(user_id=T.InputUserSelf(), charge_id="charge"),
+], ids=["send-stars-form", "without-updates", "business-connection", "refund"])
+
+
+@pytest.mark.asyncio
+@payment_requests
+async def test_payments_are_not_sent_again_after_a_timeout(query):
+    session = silent_session()
+
+    # The payment may have gone through although its answer didn't come: it used to be sent 11 times
+    with pytest.raises(TimeoutError, match="was not sent again"):
+        await session.invoke(query, timeout=0.01)
+
+    assert session.connection.sent == 1
+    assert session.results == {}
+
+
+@pytest.mark.asyncio
+@payment_requests
+@pytest.mark.parametrize("error", [
+    InternalServerError(), ServiceUnavailable(), OSError("connection reset")
+], ids=["internal-server-error", "service-unavailable", "connection-lost"])
+async def test_payments_are_not_sent_again_after_an_error(query, error):
+    session = silent_session()
+    sent = []
+
+    async def send(query, *args, **kwargs):
+        sent.append(query)
+        raise error
+
+    session.send = send
+
+    with pytest.raises(type(error)):
+        await session.invoke(query)
+
+    assert sent == [query]
+
+
+@pytest.mark.asyncio
+async def test_other_requests_are_still_sent_again_after_a_timeout(monkeypatch):
+    session = silent_session()
+    sleep = asyncio.sleep
+    monkeypatch.setattr("pyrogram.session.session.asyncio.sleep", lambda delay: sleep(0))
+
+    with pytest.raises(TimeoutError, match="Request timed out"):
+        await session.invoke(raw.functions.Ping(ping_id=1), retries=2, timeout=0.01)
+
+    assert session.connection.sent == 3
 
 
 # ---------------------------------------------------------------------------------------------------------------

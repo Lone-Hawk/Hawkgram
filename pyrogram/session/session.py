@@ -64,6 +64,16 @@ class Session:
         444: "invalid DC"
     }
 
+    # Requests that move money and that Telegram can't recognize when they arrive again (they have no random_id).
+    # After a timeout, a lost connection or an internal server error they may have been carried out anyway, so they are
+    # never sent again automatically: a payment used to be sent up to 11 times when its answer didn't come in time.
+    NOT_RESENT = (
+        raw.functions.payments.SendStarsForm,
+        raw.functions.payments.SendPaymentForm,
+        raw.functions.payments.FulfillStarsSubscription,
+        raw.functions.payments.RefundStarsCharge,
+    )
+
     def __init__(
         self,
         client: "pyrogram.Client",
@@ -425,10 +435,14 @@ class Session:
         except asyncio.TimeoutError:
             pass
 
-        if isinstance(query, (raw.functions.InvokeWithoutUpdates, raw.functions.InvokeWithTakeout)):
-            inner_query = query.query
-        else:
-            inner_query = query
+        inner_query = query
+
+        while isinstance(inner_query, (
+            raw.functions.InvokeWithoutUpdates,
+            raw.functions.InvokeWithTakeout,
+            raw.functions.InvokeWithBusinessConnection
+        )):
+            inner_query = inner_query.query
 
         query_name = ".".join(inner_query.QUALNAME.split(".")[1:])
 
@@ -448,6 +462,17 @@ class Session:
             except (OSError, InternalServerError, ServiceUnavailable) as e:
                 if retries == 0:
                     raise e from None
+
+                if isinstance(inner_query, Session.NOT_RESENT):
+                    log.warning('[%s] Not sending "%s" again after: %s. It may have been carried out anyway',
+                                self.client.name, query_name, str(e) or repr(e))
+
+                    if isinstance(e, TimeoutError):
+                        raise TimeoutError(
+                            f'"{query_name}" timed out and was not sent again: it may have been carried out anyway'
+                        ) from e
+
+                    raise
 
                 (log.warning if retries < 2 else log.info)(
                     '[%s] Retrying "%s" due to: %s',
