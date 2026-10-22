@@ -52,6 +52,21 @@ Hawkgram keeps the `pyrogram` import name, so existing code keeps working unchan
 
 ### Changelog
 
+#### Hawkgram 1.0.10 (unreleased): payment safety
+
+- **`send_gift` and `send_payment_form` only pay the price you agreed to** (behaviour change). They paid whatever
+  the gift or invoice cost, so a bot passing on a gift id or an invoice link from a user could be made to spend any
+  amount of the account's Stars. Pass `max_star_count` to pay up to that many Stars. Without it, or when the price
+  is higher or not in Stars, `ValueError` is raised (saying the price) and nothing is paid, like `transfer_gift`,
+  `upgrade_gift` and `send_resold_gift` since 1.0.9.
+- **Payments are never sent twice by an automatic retry.** When a request timed out, lost its connection or got an
+  internal server error from Telegram, it was sent again up to 10 more times, although Telegram may already have
+  carried it out. Payments, Star subscription payments and Star refunds are no longer sent again: the error is
+  raised (a timeout says that the request may have gone through), so check `get_stars_transactions` before trying
+  again. Other requests are still retried as before.
+- **`send_gift` can send a gift with a text.** Any text without formatting made it fail with `TypeError` before
+  anything was sent.
+
 #### Hawkgram 1.0.9: security review fixes
 
 - **`Message.text.html` and `.caption.html` escape all of the text.** Text before, after or outside of any formatting
