@@ -1335,6 +1335,8 @@ class Client(Methods):
 
             elif isinstance(r, raw.types.upload.FileCdnRedirect):
                 cdn_session = await self._get_media_session(r.dc_id, is_cdn=True)
+                # Hashes of the file's parts by offset, starting with those that come with the redirect
+                cdn_hashes = {h.offset: h for h in r.file_hashes}
 
                 while True:
                     r2 = await cdn_session.invoke(
@@ -1370,20 +1372,38 @@ class Client(Methods):
                         )
                     )
 
-                    hashes = await session.invoke(
-                        raw.functions.upload.GetCdnFileHashes(
-                            file_token=r.file_token,
-                            offset=offset_bytes
-                        )
-                    )
-
                     # https://core.telegram.org/cdn#verifying-files
-                    for i, h in enumerate(hashes):
-                        cdn_chunk = decrypted_chunk[h.limit * i: h.limit * (i + 1)]
+                    # Every byte must be covered by a hash from the main DC, found by its offset: only the hashes
+                    # that came back used to be checked, so parts without one (or all of the chunk, with no hashes
+                    # at all) were accepted from the CDN unverified.
+                    position = offset_bytes
+
+                    while position < offset_bytes + len(decrypted_chunk):
+                        h = cdn_hashes.pop(position, None)
+
+                        if h is None:
+                            hashes = await session.invoke(
+                                raw.functions.upload.GetCdnFileHashes(
+                                    file_token=r.file_token,
+                                    offset=position
+                                )
+                            )
+
+                            cdn_hashes.update((i.offset, i) for i in hashes if i.offset >= position)
+                            h = cdn_hashes.pop(position, None)
+
+                        CDNFileHashMismatch.check(
+                            h is not None and h.limit > 0,
+                            "a hash is given for every part of the file"
+                        )
+
+                        cdn_chunk = decrypted_chunk[position - offset_bytes:position - offset_bytes + h.limit]
                         CDNFileHashMismatch.check(
                             h.hash == sha256(cdn_chunk).digest(),
                             "h.hash == sha256(cdn_chunk).digest()"
                         )
+
+                        position += h.limit
 
                     yield decrypted_chunk
 

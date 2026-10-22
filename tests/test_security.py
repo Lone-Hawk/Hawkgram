@@ -310,6 +310,76 @@ async def test_cdn_chunk_failing_its_hash_check_is_not_saved(tmp_path, monkeypat
     assert client.media_sessions == {2: session, ("cdn", 2): cdn_session}
 
 
+CDN_PART = 128 * 1024
+CDN_DATA = os.urandom(2 * CDN_PART + 100)  # Three parts, the last one short: a single chunk, the end of the file
+
+
+def cdn_hash(offset, data=CDN_DATA):
+    return T.FileHash(offset=offset, limit=CDN_PART, hash=sha256(data[offset:offset + CDN_PART]).digest())
+
+
+async def download_from_cdn(tmp_path, monkeypatch, redirect_hashes, hash_answers):
+    """Download CDN_DATA through a CDN: returns the chunks received and the main DC session"""
+    class FakeAuth:
+        def __init__(self, *args):
+            pass
+
+        async def create(self):
+            return bytes(256)
+
+    monkeypatch.setattr("pyrogram.client.Auth", FakeAuth)
+
+    key, iv = os.urandom(32), os.urandom(16)
+    encrypted = aes.ctr256_encrypt(CDN_DATA, key, bytearray(iv[:-4] + bytes(4)))
+    redirect = T.upload.FileCdnRedirect(
+        dc_id=2, file_token=b"token", encryption_key=key, encryption_iv=iv, file_hashes=redirect_hashes
+    )
+
+    session = FakeMediaSession([redirect, *hash_answers])
+    cdn_session = FakeMediaSession([T.upload.CdnFile(bytes=encrypted)])
+    client = await client_with_media_sessions(tmp_path, monkeypatch, session, cdn_session)
+    chunks = []
+
+    try:
+        async for chunk in client.get_file(document_file_id(), len(CDN_DATA)):
+            chunks.append(chunk)
+    finally:
+        assert session.answers == []
+
+    return chunks, session
+
+
+@pytest.mark.asyncio
+async def test_cdn_chunk_is_verified_with_hashes_from_the_redirect_and_the_main_dc(tmp_path, monkeypatch):
+    chunks, session = await download_from_cdn(
+        tmp_path, monkeypatch, [cdn_hash(0)], [[cdn_hash(CDN_PART), cdn_hash(2 * CDN_PART)]]
+    )
+
+    assert b"".join(chunks) == CDN_DATA
+
+    # Only the hashes that didn't come with the redirect were asked for
+    get_file, get_hashes = session.requests
+    assert isinstance(get_hashes, raw.functions.upload.GetCdnFileHashes) and get_hashes.offset == CDN_PART
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("redirect_hashes, hash_answers", [
+    # No hash at all: the whole chunk used to be accepted unverified
+    ([], [[]]),
+    # Only the first part is covered: the others used to be accepted unverified
+    ([cdn_hash(0)], [[]]),
+    # Hashes of the other parts only
+    ([], [[cdn_hash(CDN_PART), cdn_hash(2 * CDN_PART)]]),
+    # A hash given for another offset than the one it's used for
+    ([], [[T.FileHash(offset=1, limit=CDN_PART, hash=cdn_hash(0).hash)]]),
+], ids=["no-hashes", "first-part-only", "other-parts-only", "wrong-offset"])
+async def test_cdn_chunk_with_unverified_parts_is_rejected(tmp_path, monkeypatch, redirect_hashes, hash_answers):
+    from pyrogram.errors import CDNFileHashMismatch
+
+    with pytest.raises(CDNFileHashMismatch, match="a hash is given for every part"):
+        await download_from_cdn(tmp_path, monkeypatch, redirect_hashes, hash_answers)
+
+
 # ---------------------------------------------------------------------------------------------------------------
 # Markdown parser denial of service
 # ---------------------------------------------------------------------------------------------------------------
