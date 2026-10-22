@@ -18,7 +18,7 @@
 #  along with Hawkgram.  If not, see <http://www.gnu.org/licenses/>.
 
 import pyrogram
-from pyrogram import raw
+from pyrogram import raw, utils
 
 
 class TransferBusinessAccountStars:
@@ -41,6 +41,7 @@ class TransferBusinessAccountStars:
 
             star_count (``int`` | ``str``):
                 Number of Telegram Stars to transfer, 1-10000.
+                If Telegram asks for more than that, ``ValueError`` is raised and nothing is transferred.
 
         Returns:
             ``bool``: On success, True is returned.
@@ -50,24 +51,15 @@ class TransferBusinessAccountStars:
             bot_id = self.me.id
         else:
             bot_id = (
-                await self.invoke(raw.functions.users.GetUsers(id=[raw.types.InputPeerSelf()]))
+                await self.invoke(raw.functions.users.GetUsers(id=[raw.types.InputUserSelf()]))
             )[0].id
 
         invoice = raw.types.InputInvoiceBusinessBotTransferStars(
             bot=await self.resolve_peer(bot_id), stars=star_count
         )
 
-        payment_form = await self.invoke(
-            raw.functions.payments.GetPaymentForm(invoice=invoice),
-            business_connection_id=business_connection_id,
-        )
-
-        await self.invoke(
-            raw.functions.payments.SendStarsForm(
-                form_id=payment_form.form_id,
-                invoice=invoice,
-            ),
-            business_connection_id=business_connection_id,
-        )
+        # The payment is made on behalf of the business account (invoke() has no business_connection_id parameter:
+        # passing one raised TypeError), and never for more than the star_count asked for
+        await utils.pay_stars_invoice(self, invoice, star_count, business_connection_id=business_connection_id)
 
         return True

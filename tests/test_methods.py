@@ -19,11 +19,12 @@
 """Regression tests for Client methods, with requests and answers going through FakeClient"""
 
 from datetime import datetime
+from types import SimpleNamespace
 
 import pytest
 
 from pyrogram import errors, raw, types, utils
-from .test_layer_229 import FakeClient, USER_ID, CHANNEL_ID, CHANNEL_RAW_ID, raw_user, updates
+from .test_layer_229 import FakeClient, USER_ID, BOT_ID, CHANNEL_ID, CHANNEL_RAW_ID, raw_user, updates
 
 T = raw.types
 
@@ -520,3 +521,92 @@ async def test_resold_gift_returns_the_gift_message(client):
     sent = await client.send_resold_gift(GIFT_LINK, USER_ID, max_star_count=500)
 
     assert isinstance(sent, types.Message) and sent.id == 9
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Business account methods act on behalf of the business connection
+# ---------------------------------------------------------------------------------------------------------------
+
+CONNECTION_ID = "connection"
+
+
+@pytest.fixture
+def business_client(client):
+    async def get_business_connection(business_connection_id):
+        assert business_connection_id == CONNECTION_ID
+        return SimpleNamespace(id=CONNECTION_ID, user=SimpleNamespace(id=USER_ID))
+
+    client.get_business_connection = get_business_connection
+
+    return client
+
+
+def on_behalf(request):
+    """The query sent on behalf of the business account (they all raised TypeError before reaching Telegram)"""
+    assert isinstance(request, raw.functions.InvokeWithBusinessConnection)
+    assert request.connection_id == CONNECTION_ID
+
+    return request.query
+
+
+@pytest.mark.asyncio
+async def test_get_business_account_star_balance(business_client):
+    business_client.responses = [T.payments.StarsStatus(
+        balance=T.StarsAmount(amount=7, nanos=0), chats=[], users=[]
+    )]
+
+    assert await business_client.get_business_account_star_balance(CONNECTION_ID) == 7
+
+    (request,) = business_client.requests
+    assert isinstance(on_behalf(request), raw.functions.payments.GetStarsStatus)
+
+
+@pytest.mark.asyncio
+async def test_get_business_account_gifts(business_client):
+    business_client.responses = [T.payments.SavedStarGifts(count=0, gifts=[], chats=[], users=[])]
+
+    assert [gift async for gift in business_client.get_business_account_gifts(CONNECTION_ID)] == []
+
+    (request,) = business_client.requests
+    assert isinstance(on_behalf(request), raw.functions.payments.GetSavedStarGifts)
+
+
+@pytest.mark.asyncio
+async def test_delete_business_messages(business_client):
+    business_client.responses = [T.messages.AffectedMessages(pts=10, pts_count=2)]
+
+    assert await business_client.delete_business_messages(CONNECTION_ID, [5, 6]) == 2
+
+    (request,) = business_client.requests
+    query = on_behalf(request)
+    assert isinstance(query, raw.functions.messages.DeleteMessages) and query.id == [5, 6]
+
+
+@pytest.mark.asyncio
+async def test_transfer_business_account_stars(business_client):
+    business_client.responses = [[raw_user(BOT_ID, bot=True)], stars_payment_form(50), T.payments.PaymentResult(
+        updates=updates()
+    )]
+
+    assert await business_client.transfer_business_account_stars(CONNECTION_ID, 50) is True
+
+    get_self, get_form, pay = business_client.requests
+    assert get_self.id == [T.InputUserSelf()]
+    get_form, pay = on_behalf(get_form), on_behalf(pay)
+    assert isinstance(get_form.invoice, T.InputInvoiceBusinessBotTransferStars) and get_form.invoice.stars == 50
+    assert isinstance(pay, raw.functions.payments.SendStarsForm)
+    assert pay.form_id == 42 and pay.invoice == get_form.invoice
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("form", [stars_payment_form(51), stars_payment_form(50, currency="USD")],
+                         ids=["too-much", "not-stars"])
+async def test_transfer_business_account_stars_never_pays_more(business_client, form):
+    business_client.responses = [[raw_user(BOT_ID, bot=True)], form]
+
+    with pytest.raises(ValueError, match="nothing was paid"):
+        await business_client.transfer_business_account_stars(CONNECTION_ID, 50)
+
+    assert not any(
+        isinstance(getattr(r, "query", r), raw.functions.payments.SendStarsForm) for r in business_client.requests
+    )

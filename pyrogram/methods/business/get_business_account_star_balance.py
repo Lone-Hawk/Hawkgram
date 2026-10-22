@@ -51,11 +51,14 @@ class GetBusinessAccountStarBalance:
         """
         connection_info = await self.get_business_connection(business_connection_id)
 
+        # invoke() has no business_connection_id parameter: passing one raised TypeError on every call
         r = await self.invoke(
-            raw.functions.payments.GetStarsStatus(
-                peer=await self.resolve_peer(connection_info.user.id),
-            ),
-            business_connection_id=business_connection_id
+            raw.functions.InvokeWithBusinessConnection(
+                connection_id=business_connection_id,
+                query=raw.functions.payments.GetStarsStatus(
+                    peer=await self.resolve_peer(connection_info.user.id),
+                )
+            )
         )
 
         return r.balance.amount

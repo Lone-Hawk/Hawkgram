@@ -89,21 +89,24 @@ class GetBusinessAccountGifts:
         connection_info = await self.get_business_connection(business_connection_id)
 
         while True:
+            # invoke() has no business_connection_id parameter: passing one raised TypeError on every call
             r = await self.invoke(
-                raw.functions.payments.GetSavedStarGifts(
-                    peer=await self.resolve_peer(connection_info.user.id),
-                    offset=offset,
-                    limit=limit,
-                    exclude_unsaved=exclude_unsaved,
-                    exclude_saved=exclude_saved,
-                    exclude_unlimited=exclude_unlimited,
-                    exclude_upgradable=exclude_limited,
-                    exclude_unupgradable=exclude_limited,
-                    exclude_unique=exclude_upgraded,
-                    sort_by_value=sort_by_price
+                raw.functions.InvokeWithBusinessConnection(
+                    connection_id=business_connection_id,
+                    query=raw.functions.payments.GetSavedStarGifts(
+                        peer=await self.resolve_peer(connection_info.user.id),
+                        offset=offset,
+                        limit=limit,
+                        exclude_unsaved=exclude_unsaved,
+                        exclude_saved=exclude_saved,
+                        exclude_unlimited=exclude_unlimited,
+                        exclude_upgradable=exclude_limited,
+                        exclude_unupgradable=exclude_limited,
+                        exclude_unique=exclude_upgraded,
+                        sort_by_value=sort_by_price
+                    )
                 ),
-                sleep_threshold=60,
-                business_connection_id=business_connection_id
+                sleep_threshold=60
             )
 
             users = {i.id: i for i in r.users}

@@ -61,12 +61,15 @@ class DeleteBusinessMessages:
         """
         message_ids = list(message_ids) if not isinstance(message_ids, int) else [message_ids]
 
+        # invoke() has no business_connection_id parameter: passing one raised TypeError on every call
         r = await self.invoke(
-            raw.functions.messages.DeleteMessages(
-                id=message_ids,
-                revoke=True
-            ),
-            business_connection_id=business_connection_id
+            raw.functions.InvokeWithBusinessConnection(
+                connection_id=business_connection_id,
+                query=raw.functions.messages.DeleteMessages(
+                    id=message_ids,
+                    revoke=True
+                )
+            )
         )
 
         return r.pts_count

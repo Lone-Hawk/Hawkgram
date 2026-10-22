@@ -360,15 +360,23 @@ async def parse_poll_from_updates(client: "pyrogram.Client", updates: "raw.base.
 async def pay_stars_invoice(
     client: "pyrogram.Client",
     invoice: "raw.base.InputInvoice",
-    max_star_count: Optional[int]
+    max_star_count: Optional[int],
+    business_connection_id: Optional[str] = None
 ) -> "raw.base.payments.PaymentResult":
     """Pay an invoice in Telegram Stars, unless it costs more than *max_star_count*.
 
     The caller decides how much may be spent, and the price in the payment form (which can change at any time, e.g. a
     resale price) is checked before anything is paid. With no *max_star_count*, nothing is paid and the error says
-    the price. Returns the result of the payment.
+    the price. With *business_connection_id*, both requests are made on behalf of that business account. Returns the
+    result of the payment.
     """
-    form = await client.invoke(raw.functions.payments.GetPaymentForm(invoice=invoice))
+    def on_behalf(query):
+        if business_connection_id is None:
+            return query
+
+        return raw.functions.InvokeWithBusinessConnection(connection_id=business_connection_id, query=query)
+
+    form = await client.invoke(on_behalf(raw.functions.payments.GetPaymentForm(invoice=invoice)))
     form_invoice = getattr(form, "invoice", None)
 
     if form_invoice is None or form_invoice.currency != "XTR":
@@ -386,7 +394,7 @@ async def pay_stars_invoice(
             f"This costs {star_count} Telegram Stars, more than max_star_count ({max_star_count}): nothing was paid"
         )
 
-    return await client.invoke(raw.functions.payments.SendStarsForm(form_id=form.form_id, invoice=invoice))
+    return await client.invoke(on_behalf(raw.functions.payments.SendStarsForm(form_id=form.form_id, invoice=invoice)))
 
 
 WINDOWS_RESERVED_NAMES = {
