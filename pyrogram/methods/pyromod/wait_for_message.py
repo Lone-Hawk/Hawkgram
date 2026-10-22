@@ -31,7 +31,8 @@ class WaitForMessage:
         self: "pyrogram.Client",
         chat_id: Union[int, str],
         filters: Filter = None,
-        timeout: int = None
+        timeout: int = None,
+        user_id: Union[int, str] = None
     ) -> "types.Message":
         """Wait for message.
 
@@ -47,6 +48,10 @@ class WaitForMessage:
 
             timeout (``int``, *optional*):
                 Timeout in seconds.
+
+            user_id (``int`` | ``str``, *optional*):
+                Unique identifier (int) or username (str) of the user whose message to wait for.
+                By default, the next message from anyone in the chat is returned.
 
         Returns:
             :obj:`~pyrogram.types.Message`: On success, the reply message is returned.
@@ -65,11 +70,17 @@ class WaitForMessage:
 
                 # Example with timeout
                 reply_message = app.wait_for_message(chat_id, timeout=60)
+
+                # Example waiting for one user in a group
+                reply_message = app.wait_for_message(chat_id, user_id=user_id)
         """
 
         if not isinstance(chat_id, int):
             chat = await self.get_chat(chat_id)
             chat_id = chat.id
+
+        if user_id is not None and not isinstance(user_id, int):
+            user_id = (await self.get_users(user_id)).id
 
         conversation_handler = self.dispatcher.conversation_handler
         future = self.loop.create_future()
@@ -79,6 +90,6 @@ class WaitForMessage:
                 chat_id
             )
         )
-        waiter = dict(future=future, filters=filters, update_type=types.Message)
-        conversation_handler.waiters[chat_id] = waiter
+        waiter = dict(future=future, filters=filters, update_type=types.Message, user_id=user_id)
+        conversation_handler.add_waiter(chat_id, waiter)
         return await asyncio.wait_for(future, timeout=timeout)

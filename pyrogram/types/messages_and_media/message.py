@@ -5627,7 +5627,10 @@ class Message(Object, Update):
 
             timeout (``int``, *optional*):
                 Timeout in seconds.
-            
+
+        Only a message from the user who sent this message is taken as the answer (from anyone in the chat if this
+        message was sent by you, or has no sender user).
+
         Example:
             .. code-block:: python
 
@@ -5657,10 +5660,13 @@ class Message(Object, Update):
             reply_markup=reply_markup
         )
 
+        # The answer must come from the user who sent this message: in a group, the next message from anyone used to be
+        # taken as their answer. For a message sent by this client, anyone in the chat may answer, as before.
         reply_message = await self._client.wait_for_message(
             self.chat.id,
             filters=filters,
-            timeout=timeout
+            timeout=timeout,
+            user_id=self.from_user.id if self.from_user and not self.outgoing else None
         )
 
         reply_message.request = request

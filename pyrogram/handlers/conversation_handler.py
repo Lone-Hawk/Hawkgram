@@ -30,7 +30,12 @@ from .callback_query_handler import CallbackQueryHandler
 class ConversationHandler(MessageHandler, CallbackQueryHandler):
     """The Conversation handler class."""
     def __init__(self):
+        # Chat id -> waiters, oldest first. A chat used to have a single waiter: waiting again in the same chat (e.g. two
+        # users answering a bot at once) replaced the first one, which then never got its answer.
         self.waiters = {}
+
+    def add_waiter(self, chat_id: int, waiter: dict):
+        self.waiters.setdefault(chat_id, []).append(waiter)
 
     async def check(self, client: "pyrogram.Client", update: Union[Message, CallbackQuery]):
         if isinstance(update, Message) and update.outgoing:
@@ -41,25 +46,33 @@ class ConversationHandler(MessageHandler, CallbackQueryHandler):
         except AttributeError:
             return False
 
-        waiter = self.waiters.get(chat_id)
-        if not waiter or not isinstance(update, waiter['update_type']) or waiter['future'].done():
-            return False
+        from_user_id = update.from_user.id if update.from_user else None
 
-        filters = waiter.get('filters')
-        if callable(filters):
-            if inspect.iscoroutinefunction(filters.__call__):
-                filtered = await filters(client, update)
-            else:
-                filtered = await client.loop.run_in_executor(
-                    client.executor,
-                    filters,
-                    client, update
-                )
-            if not filtered or waiter['future'].done():
-                return False
+        for waiter in list(self.waiters.get(chat_id, [])):
+            if not isinstance(update, waiter['update_type']) or waiter['future'].done():
+                continue
 
-        waiter['future'].set_result(update)
-        return True
+            # A waiter for one user's answer is only given that user's updates, not those of anyone else in the chat
+            if waiter.get('user_id') is not None and waiter['user_id'] != from_user_id:
+                continue
+
+            filters = waiter.get('filters')
+            if callable(filters):
+                if inspect.iscoroutinefunction(filters.__call__):
+                    filtered = await filters(client, update)
+                else:
+                    filtered = await client.loop.run_in_executor(
+                        client.executor,
+                        filters,
+                        client, update
+                    )
+                if not filtered or waiter['future'].done():
+                    continue
+
+            waiter['future'].set_result(update)
+            return True
+
+        return False
 
     @staticmethod
     # pylint: disable=method-hidden
@@ -67,5 +80,9 @@ class ConversationHandler(MessageHandler, CallbackQueryHandler):
         pass
 
     def delete_waiter(self, chat_id, future):
-        if future == self.waiters[chat_id]['future']:
-            del self.waiters[chat_id]
+        waiters = [waiter for waiter in self.waiters.get(chat_id, []) if waiter['future'] is not future]
+
+        if waiters:
+            self.waiters[chat_id] = waiters
+        else:
+            self.waiters.pop(chat_id, None)
