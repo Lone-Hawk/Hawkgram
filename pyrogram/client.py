@@ -215,6 +215,11 @@ class Client(Methods):
         client_platform (:obj:`~pyrogram.enums.ClientPlatform`, *optional*):
             The platform where this client is running.
             Defaults to 'other'
+
+        progress_interval (``float``, *optional*):
+            Call the progress callbacks of uploads and downloads at most once every this many seconds; the first and
+            the last chunk are always reported. Useful when the callback edits a message, which Telegram rate limits.
+            Defaults to None: called for every chunk.
     """
 
     APP_VERSION = f"Hawkgram {__version__}"
@@ -277,7 +282,8 @@ class Client(Methods):
         max_concurrent_transmissions: int = MAX_CONCURRENT_TRANSMISSIONS,
         client_platform: "enums.ClientPlatform" = enums.ClientPlatform.OTHER,
         max_message_cache_size: int = MAX_CACHE_SIZE,
-        max_business_user_connection_cache_size: int = MAX_CACHE_SIZE
+        max_business_user_connection_cache_size: int = MAX_CACHE_SIZE,
+        progress_interval: Optional[float] = None
     ):
         super().__init__()
 
@@ -312,6 +318,8 @@ class Client(Methods):
         self.sleep_threshold = sleep_threshold
         self.hide_password = hide_password
         self.max_concurrent_transmissions = max_concurrent_transmissions
+        # Checked here, so a wrong value fails at once instead of at the first transfer
+        self.progress_interval = utils.ProgressThrottle(progress_interval).interval
         self.client_platform = client_platform
         self.max_message_cache_size = max_message_cache_size
         self.max_message_cache_size = max_message_cache_size
@@ -1298,6 +1306,7 @@ class Client(Methods):
             total = abs(limit) or (1 << 31) - 1
             chunk_size = 1024 * 1024
             offset_bytes = abs(offset) * chunk_size
+            throttle = utils.ProgressThrottle(self.progress_interval)
 
             dc_id = file_id.dc_id
 
@@ -1324,7 +1333,10 @@ class Client(Methods):
                     current += 1
                     offset_bytes += chunk_size
 
-                    if progress:
+                    # The last chunk is always reported when progress callbacks are throttled
+                    is_last = len(chunk) < chunk_size or current >= total or 0 < file_size <= offset_bytes
+
+                    if progress and throttle(is_last):
                         func = functools.partial(
                             progress,
                             min(offset_bytes, file_size)
@@ -1438,7 +1450,10 @@ class Client(Methods):
                     current += 1
                     offset_bytes += chunk_size
 
-                    if progress:
+                    # The last chunk is always reported when progress callbacks are throttled
+                    is_last = len(chunk) < chunk_size or current >= total or 0 < file_size <= offset_bytes
+
+                    if progress and throttle(is_last):
                         func = functools.partial(
                             progress,
                             min(offset_bytes, file_size) if file_size != 0 else offset_bytes,

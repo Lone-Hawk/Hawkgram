@@ -25,6 +25,7 @@ import hashlib
 import re
 import os
 import struct
+import time
 from concurrent.futures.thread import ThreadPoolExecutor
 from datetime import datetime, timezone
 from getpass import getpass
@@ -69,6 +70,34 @@ def get_event_loop() -> asyncio.AbstractEventLoop:
         asyncio.set_event_loop(loop)
 
     return loop
+
+
+class ProgressThrottle:
+    """Decide which progress callbacks of a transfer to make, at most one every *interval* seconds.
+
+    The first and the last are always made. With *interval* None every callback is made.
+    """
+
+    clock = staticmethod(time.monotonic)
+
+    def __init__(self, interval: Optional[float] = None):
+        if interval is not None and not interval >= 0:
+            raise ValueError(f"progress_interval must be None or a number of seconds >= 0, not {interval!r}")
+
+        self.interval = interval
+        self.last = None
+
+    def __call__(self, is_last: bool = False) -> bool:
+        if self.interval is None:
+            return True
+
+        now = self.clock()
+
+        if is_last or self.last is None or now - self.last >= self.interval:
+            self.last = now
+            return True
+
+        return False
 
 
 async def ainput(prompt: str = "", *, hide: bool = False):

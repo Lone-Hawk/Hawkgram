@@ -310,3 +310,155 @@ async def test_download_in_memory_writes_in_a_thread(client, tmp_path, monkeypat
     # Left at the end, as when the chunks were written on the event loop
     assert result.tell() == len(data)
     assert result.threads and threading.get_ident() not in result.threads
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Upload and download progress
+# ---------------------------------------------------------------------------------------------------------------
+
+BIG_SIZE = 11 * 1024 * 1024 + 7  # 23 parts, uploaded by four workers
+
+
+class ProgressRecorder:
+    def __init__(self, session=None):
+        self.session = session
+        self.calls = []
+
+        # A coroutine function, not an object with an async __call__: only those are awaited
+        async def callback(current, total, *args):
+            confirmed = sum(len(p) for p in session.parts.values()) if session else None
+            self.calls.append((current, total, args, confirmed))
+            await asyncio.sleep(0)
+
+        self.callback = callback
+
+    @property
+    def currents(self):
+        return [c[0] for c in self.calls]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("size", [3 * PART_SIZE + 7, BIG_SIZE], ids=["small", "big"])
+async def test_upload_progress_only_counts_confirmed_parts(client, size):
+    # The first parts are confirmed last, so parts finish out of order
+    session = FakeMediaSession(delays={0: 0.05, 1: 0.03})
+    use_session(client, session)
+    progress = ProgressRecorder(session)
+
+    await client.save_file(io.BytesIO(os.urandom(size)), progress=progress.callback, progress_args=("arg",))
+
+    parts = -(-size // PART_SIZE)
+    assert len(progress.calls) == parts
+    # Reported when the part was queued, progress ran ahead of what Telegram had and reached 100% too early
+    assert all(current <= confirmed for current, _, _, confirmed in progress.calls)
+    assert all(total == size and args == ("arg",) for _, total, args, _ in progress.calls)
+    assert progress.currents == sorted(set(progress.currents))
+    assert progress.currents[-1] == size
+
+
+@pytest.mark.asyncio
+async def test_upload_progress_calls_sync_callbacks_one_at_a_time(client):
+    session = FakeMediaSession(delays={0: 0.05})
+    use_session(client, session)
+    calls = []
+    running = []
+
+    def progress(current, total):
+        running.append(current)
+        assert len(running) == 1, "callbacks overlapped"
+        threading.Event().wait(0.001)
+        calls.append((current, threading.get_ident()))
+        running.pop()
+
+    await client.save_file(io.BytesIO(os.urandom(BIG_SIZE)), progress=progress)
+
+    currents = [c for c, _ in calls]
+    assert len(calls) == 23 and currents == sorted(currents) and currents[-1] == BIG_SIZE
+    assert threading.get_ident() not in {t for _, t in calls}
+
+
+@pytest.mark.asyncio
+async def test_stop_transmission_from_the_progress_callback_stops_the_upload(client):
+    session = FakeMediaSession()
+    use_session(client, session)
+
+    async def progress(current, total):
+        if current >= 2 * PART_SIZE:
+            raise pyrogram.StopTransmission()
+
+    with pytest.raises(pyrogram.StopTransmission):
+        await client.save_file(io.BytesIO(os.urandom(BIG_SIZE)), progress=progress)
+
+    assert len(session.parts) < 23
+
+
+@pytest.mark.asyncio
+async def test_missing_part_upload_reports_no_progress(client):
+    use_session(client, FakeMediaSession())
+    progress = ProgressRecorder()
+
+    await client.save_file(io.BytesIO(os.urandom(3 * PART_SIZE)), file_id=123, file_part=1, progress=progress.callback)
+
+    assert progress.calls == []
+
+
+@pytest.mark.asyncio
+async def test_upload_progress_interval_reports_the_first_and_the_last_part(client):
+    use_session(client, FakeMediaSession())
+    progress = ProgressRecorder()
+
+    await client.save_file(io.BytesIO(os.urandom(BIG_SIZE)), progress=progress.callback, progress_interval=3600)
+
+    assert progress.currents == [PART_SIZE, BIG_SIZE]
+
+
+@pytest.mark.asyncio
+async def test_upload_progress_interval_defaults_to_the_clients(client):
+    use_session(client, FakeMediaSession())
+    client.progress_interval = 3600
+    throttled, every_part = ProgressRecorder(), ProgressRecorder()
+
+    await client.save_file(io.BytesIO(os.urandom(BIG_SIZE)), progress=throttled.callback)
+    await client.save_file(io.BytesIO(os.urandom(BIG_SIZE)), progress=every_part.callback, progress_interval=0)
+
+    assert len(throttled.calls) == 2
+    assert len(every_part.calls) == 23
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("interval, expected", [
+    (None, [CHUNK_SIZE, 2 * CHUNK_SIZE, 2 * CHUNK_SIZE + 10]),
+    (3600, [CHUNK_SIZE, 2 * CHUNK_SIZE + 10]),
+])
+async def test_download_progress_interval(client, tmp_path, interval, expected):
+    data = os.urandom(2 * CHUNK_SIZE + 10)
+    use_session(client, FakeMediaSession(data))
+    client.progress_interval = interval
+    progress = ProgressRecorder()
+
+    packet = (document_file_id(), str(tmp_path), "video.mp4", False, len(data), progress.callback, ())
+    await client.handle_download(packet)
+
+    assert progress.currents == expected
+
+
+def test_progress_throttle(monkeypatch):
+    now = [100.0]
+    monkeypatch.setattr(pyrogram.utils.ProgressThrottle, "clock", staticmethod(lambda: now[0]))
+    throttle = pyrogram.utils.ProgressThrottle(2)
+    made = []
+
+    for t in (0, 0.5, 1.9, 2.0, 2.1, 3.9, 4.5, 4.6):
+        now[0] = 100 + t
+        made.append(throttle())
+
+    assert made == [True, False, False, True, False, False, True, False]
+    # The last is always made
+    assert throttle(is_last=True)
+    assert all(pyrogram.utils.ProgressThrottle(None)() for _ in range(3))
+
+
+@pytest.mark.parametrize("interval", [-1, float("nan")])
+def test_invalid_progress_interval_is_refused(tmp_path, interval):
+    with pytest.raises(ValueError):
+        pyrogram.Client("transfers", api_id=1, api_hash="0" * 32, in_memory=True, progress_interval=interval)

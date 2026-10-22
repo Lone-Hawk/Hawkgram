@@ -30,7 +30,7 @@ from pathlib import PurePath
 from typing import Union, BinaryIO, Callable
 
 import pyrogram
-from pyrogram import raw
+from pyrogram import raw, utils
 from pyrogram.file_io import PartFile
 
 log = logging.getLogger(__name__)
@@ -65,7 +65,8 @@ class SaveFile:
         file_id: int = None,
         file_part: int = 0,
         progress: Callable = None,
-        progress_args: tuple = ()
+        progress_args: tuple = (),
+        progress_interval: float = None
     ):
         """Upload a file onto Telegram servers, without actually sending the message to anyone.
         Useful whenever an InputFile type is required.
@@ -93,16 +94,22 @@ class SaveFile:
                 Pass a callback function to view the file transmission progress.
                 The function must take *(current, total)* as positional arguments (look at Other Parameters below for a
                 detailed description) and will be called back each time a new file chunk has been successfully
-                transmitted.
+                transmitted, that is when Telegram has confirmed it. Calls are made one at a time, and *current* grows
+                with each of them.
 
             progress_args (``tuple``, *optional*):
                 Extra custom arguments for the progress callback function.
                 You can pass anything you need to be available in the progress callback scope; for example, a Message
                 object or a Client instance in order to edit the message with the updated progress status.
 
+            progress_interval (``float``, *optional*):
+                Call *progress* at most once every this many seconds; the first and the last chunk (when *current*
+                equals *total*) are always reported.
+                Defaults to the client's *progress_interval*, which defaults to None: called for every chunk.
+
         Other Parameters:
             current (``int``):
-                The amount of bytes transmitted so far.
+                The amount of bytes transmitted so far, as confirmed by Telegram.
 
             total (``int``):
                 The total size of the file.
@@ -121,6 +128,24 @@ class SaveFile:
             if path is None:
                 return None
 
+            async def report_progress(part_length):
+                nonlocal uploaded
+
+                # Workers confirm parts concurrently and out of order: one callback at a time, each reporting one more
+                # part, keeps the reported size growing
+                async with progress_lock:
+                    uploaded += part_length
+
+                    if errors or not throttle(uploaded >= file_size):
+                        return
+
+                    func = functools.partial(progress, uploaded, file_size, *progress_args)
+
+                    if inspect.iscoroutinefunction(progress):
+                        await func()
+                    else:
+                        await self.loop.run_in_executor(self.executor, func)
+
             async def worker(session):
                 while True:
                     data = await queue.get()
@@ -133,8 +158,16 @@ class SaveFile:
                     if errors:
                         continue
 
+                    rpc, part_length = data
+
                     try:
-                        await session.invoke(data)
+                        await session.invoke(rpc)
+
+                        # Progress counts the parts Telegram confirmed. Counted when they were queued, it reached 100%
+                        # before the last parts were sent. An error raised by the callback (StopTransmission) stops the
+                        # upload like a failed part.
+                        if progress and not is_missing_part:
+                            await report_progress(part_length)
                     except Exception as e:
                         errors.append(e)
 
@@ -178,6 +211,12 @@ class SaveFile:
             workers = []
             errors = []
             queue = asyncio.Queue(1)
+            # Parts before file_part count as uploaded, as they did when progress was counted from the part number
+            uploaded = part_size * file_part
+            progress_lock = asyncio.Lock()
+            throttle = utils.ProgressThrottle(
+                self.progress_interval if progress_interval is None else progress_interval
+            )
             # Parts are read in a thread, so a slow disk doesn't block the event loop
             part_file = PartFile(fp)
 
@@ -208,7 +247,7 @@ class SaveFile:
                             bytes=chunk
                         )
 
-                    await queue.put(rpc)
+                    await queue.put((rpc, len(chunk)))
 
                     # A part that failed fails the upload. Errors used to be logged and the upload to go on, giving
                     # a file with missing parts, or None.
@@ -222,19 +261,6 @@ class SaveFile:
                         md5_sum.update(chunk)
 
                     file_part += 1
-
-                    if progress:
-                        func = functools.partial(
-                            progress,
-                            min(file_part * part_size, file_size),
-                            file_size,
-                            *progress_args
-                        )
-
-                        if inspect.iscoroutinefunction(progress):
-                            await func()
-                        else:
-                            await self.loop.run_in_executor(self.executor, func)
 
                 # Every part has to be uploaded before the file can be used
                 await stop_workers()
