@@ -34,7 +34,8 @@ class SendGift:
         parse_mode: Optional["enums.ParseMode"] = None,
         entities: Optional[List["types.MessageEntity"]] = None,
         hide_my_name: Optional[bool] = None,
-        pay_for_upgrade: Optional[bool] = None
+        pay_for_upgrade: Optional[bool] = None,
+        max_star_count: Optional[int] = None
     ) -> bool:
         """Send star gift.
 
@@ -67,6 +68,12 @@ class SendGift:
                 For bots only.
                 Defaults to None.
 
+            max_star_count (``int``):
+                The most Telegram Stars you agree to pay for the gift (including the upgrade with *pay_for_upgrade*),
+                usually its price in :meth:`~pyrogram.Client.get_available_gifts`. If it costs more, or the price
+                isn't in Stars, ``ValueError`` is raised and nothing is paid. Without it nothing is paid either, and
+                the ``ValueError`` says the current price.
+
         Returns:
             ``bool``: On success, True is returned.
 
@@ -74,7 +81,7 @@ class SendGift:
             .. code-block:: python
 
                 # Send gift
-                app.send_gift(chat_id=chat_id, star_gift_id=123)
+                await app.send_gift(chat_id=chat_id, gift_id=123, max_star_count=50)
         """
         peer = await self.resolve_peer(chat_id)
 
@@ -85,20 +92,12 @@ class SendGift:
             gift_id=gift_id,
             hide_name=hide_my_name,
             include_upgrade=pay_for_upgrade,
-            message=raw.types.TextWithEntities(text=text, entities=entities) if text else None
+            # entities is a required vector: plain text (no entities) used to fail to serialize, so no gift with a
+            # text could be sent
+            message=raw.types.TextWithEntities(text=text, entities=entities or []) if text else None
         )
 
-        form = await self.invoke(
-            raw.functions.payments.GetPaymentForm(
-                invoice=invoice
-            )
-        )
-
-        await self.invoke(
-            raw.functions.payments.SendStarsForm(
-                form_id=form.form_id,
-                invoice=invoice
-            )
-        )
+        # The price in the payment form used to be paid whatever it was, e.g. for a gift_id that came from user input
+        await utils.pay_stars_invoice(self, invoice, max_star_count)
 
         return True

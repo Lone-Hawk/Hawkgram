@@ -19,7 +19,6 @@
 """Regression tests for Client methods, with requests and answers going through FakeClient"""
 
 from datetime import datetime
-from types import SimpleNamespace
 
 import pytest
 
@@ -111,7 +110,7 @@ async def test_delete_messages_in_channels_names_the_channel(client):
 
 
 # ---------------------------------------------------------------------------------------------------------------
-# send_payment_form doesn't fail after the stars are spent
+# send_payment_form only pays what the caller allows, and doesn't fail after the stars are spent
 # ---------------------------------------------------------------------------------------------------------------
 
 def raw_photo():
@@ -132,17 +131,21 @@ def bought(media):
     return T.MessageExtendedMedia(media=media)
 
 
+def stars_payment_form(star_count, currency="XTR"):
+    return T.payments.PaymentFormStars(
+        form_id=42, bot_id=USER_ID, title="Title", description="Description", users=[],
+        invoice=T.Invoice(currency=currency, prices=[T.LabeledPrice(label="Media", amount=star_count)])
+    )
+
+
 async def pay(client, result):
-    async def get_payment_form(**kwargs):
-        return SimpleNamespace(id=42)
+    client.responses = [stars_payment_form(100), result]
 
-    client.get_payment_form = get_payment_form
-    client.responses = [result]
-
-    medias = await client.send_payment_form(invoice_link="https://t.me/$slug")
+    medias = await client.send_payment_form(invoice_link="https://t.me/$slug", max_star_count=100)
 
     # The form was paid exactly once
-    (request,) = client.requests
+    get_form, request = client.requests
+    assert isinstance(get_form.invoice, T.InputInvoiceSlug) and get_form.invoice.slug == "slug"
     assert isinstance(request, raw.functions.payments.SendStarsForm) and request.form_id == 42
 
     return medias
@@ -181,6 +184,30 @@ async def test_send_payment_form_does_not_fail_after_paying(client, result):
     medias = await pay(client, result)
 
     assert isinstance(medias, types.List) and list(medias) == []
+
+
+@pytest.mark.asyncio
+async def test_send_payment_form_pays_nothing_without_max_star_count(client):
+    # Whatever the invoice cost used to be paid, e.g. for an invoice link a user had sent to a bot
+    client.responses = [stars_payment_form(100)]
+
+    with pytest.raises(ValueError, match="costs 100 Telegram Stars"):
+        await client.send_payment_form(invoice_link="https://t.me/$slug")
+
+    assert [type(r) for r in client.requests] == [raw.functions.payments.GetPaymentForm]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("form", [stars_payment_form(101), stars_payment_form(100, currency="USD")],
+                         ids=["too-much", "not-stars"])
+async def test_send_payment_form_refuses_other_prices(client, form):
+    client.responses = [form]
+
+    with pytest.raises(ValueError, match="nothing was paid"):
+        await client.send_payment_form(chat_id=USER_ID, message_id=7, max_star_count=100)
+
+    (get_form,) = client.requests
+    assert isinstance(get_form.invoice, T.InputInvoiceMessage) and get_form.invoice.msg_id == 7
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -270,6 +297,47 @@ async def test_gift_shortcuts_pass_max_star_count(client):
 
     assert await gift.transfer(USER_ID, max_star_count=10) is True
     assert isinstance(client.requests[-1], raw.functions.payments.SendStarsForm)
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# send_gift only pays the price the caller agreed to
+# ---------------------------------------------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_send_gift_pays_nothing_without_max_star_count(client):
+    # The gift's price used to be paid whatever it was, e.g. for a gift_id that came from user input
+    client.responses = [gift_payment_form(999999)]
+
+    with pytest.raises(ValueError, match="costs 999999 Telegram Stars"):
+        await client.send_gift(chat_id=USER_ID, gift_id=1)
+
+    assert [type(r) for r in client.requests] == [raw.functions.payments.GetPaymentForm]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("form", [gift_payment_form(51), gift_payment_form(50, currency="USD")],
+                         ids=["too-much", "not-stars"])
+async def test_send_gift_refuses_other_prices(client, form):
+    client.responses = [form]
+
+    with pytest.raises(ValueError, match="nothing was paid"):
+        await client.send_gift(chat_id=USER_ID, gift_id=1, max_star_count=50)
+
+    assert not any(isinstance(r, raw.functions.payments.SendStarsForm) for r in client.requests)
+
+
+@pytest.mark.asyncio
+async def test_send_gift_pays_within_max_star_count(client):
+    client.responses = [gift_payment_form(50), T.payments.PaymentResult(updates=updates())]
+
+    assert await client.send_gift(chat_id=USER_ID, gift_id=1, text="Hi", pay_for_upgrade=True, max_star_count=50) is True
+
+    get_form, pay = client.requests
+    assert isinstance(get_form.invoice, T.InputInvoiceStarGift)
+    assert get_form.invoice.gift_id == 1 and get_form.invoice.include_upgrade
+    assert get_form.invoice.message.text == "Hi"
+    assert isinstance(pay, raw.functions.payments.SendStarsForm)
+    assert pay.form_id == 42 and pay.invoice == get_form.invoice
 
 
 # ---------------------------------------------------------------------------------------------------------------

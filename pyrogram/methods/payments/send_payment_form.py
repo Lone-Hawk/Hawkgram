@@ -19,10 +19,10 @@
 #  along with Hawkgram.  If not, see <http://www.gnu.org/licenses/>.
 
 import re
-from typing import Union, List
+from typing import Optional, Union, List
 
 import pyrogram
-from pyrogram import raw, types
+from pyrogram import raw, types, utils
 
 
 class SendPaymentForm:
@@ -30,7 +30,8 @@ class SendPaymentForm:
         self: "pyrogram.Client", *,
         chat_id: Union[int, str] = None,
         message_id: int = None,
-        invoice_link: str = None
+        invoice_link: str = None,
+        max_star_count: Optional[int] = None
     ) -> List[Union["types.Photo", "types.Video"]]:
         """Pay an invoice.
 
@@ -51,6 +52,12 @@ class SendPaymentForm:
             invoice_link (``str``):
                 Pass a invoice link in form of a *t.me/$...* link or slug itself to pay this invoice.
 
+            max_star_count (``int``):
+                The most Telegram Stars you agree to pay, usually the price shown by
+                :meth:`~pyrogram.Client.get_payment_form`. If the invoice costs more, or isn't in Stars, ``ValueError``
+                is raised and nothing is paid. Without it nothing is paid either, and the ``ValueError`` says the
+                current price.
+
         Returns:
             List of :obj:`~pyrogram.types.Photo` | :obj:`~pyrogram.types.Video`: On success, the list of bought photos and videos is returned.
             The list is empty when the invoice isn't for paid media.
@@ -59,15 +66,14 @@ class SendPaymentForm:
             .. code-block:: python
 
                 # Pay invoice from message
-                app.send_payment_form(chat_id=chat_id, message_id=123)
+                await app.send_payment_form(chat_id=chat_id, message_id=123, max_star_count=100)
 
                 # Pay invoice form from link
-                app.send_payment_form(invoice_link="https://t.me/$xvbzUtt5sUlJCAAATqZrWRy9Yzk")
+                await app.send_payment_form(invoice_link="https://t.me/$xvbzUtt5sUlJCAAATqZrWRy9Yzk", max_star_count=100)
         """
         if not any((all((chat_id, message_id)), invoice_link)):
             raise ValueError("You should pass at least one parameter to this method.")
 
-        form = None
         invoice = None
 
         if message_id:
@@ -87,14 +93,8 @@ class SendPaymentForm:
                 slug=slug
             )
 
-        form = await self.get_payment_form(chat_id=chat_id, message_id=message_id, invoice_link=invoice_link)
-
-        r = await self.invoke(
-            raw.functions.payments.SendStarsForm(
-                form_id=form.id,
-                invoice=invoice
-            )
-        )
+        # The price in the payment form used to be paid whatever it was, e.g. for an invoice link a user had sent
+        r = await utils.pay_stars_invoice(self, invoice, max_star_count)
         # TODO: Add support for regular invoices (credentials)
 
         # The stars are spent at this point: an error below would make a caller retry the "failed" call and pay again.
