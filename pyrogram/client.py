@@ -58,6 +58,7 @@ from .connection import Connection
 from .connection.transport import TCPAbridged
 from .dispatcher import Dispatcher
 from .file_id import FileId, FileType, ThumbnailSource
+from .file_io import PartFile
 from .mime_types import mime_types
 from .parser import Parser
 from .session.internals import MsgId
@@ -1145,12 +1146,19 @@ class Client(Methods):
         # "<name>.temp", truncating and moving each other's file
         temp_file_path = "" if in_memory else f"{file_path}.{os.urandom(4).hex()}.temp"
         file = BytesIO() if in_memory else open(temp_file_path, "xb")
+        # Chunks are written in a thread, so a slow disk doesn't block the event loop
+        part_file = PartFile(file)
 
         try:
+            offset = 0
+
             async for chunk in self.get_file(file_id, file_size, 0, 0, progress, progress_args):
-                file.write(chunk)
+                await part_file.write(offset, chunk)
+                offset += len(chunk)
         except BaseException as e:
             if not in_memory:
+                # A write cancelled with the download may still be running in its thread
+                await part_file.wait()
                 file.close()
                 os.remove(temp_file_path)
 

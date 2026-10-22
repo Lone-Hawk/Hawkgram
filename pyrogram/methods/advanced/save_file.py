@@ -31,6 +31,7 @@ from typing import Union, BinaryIO, Callable
 
 import pyrogram
 from pyrogram import raw
+from pyrogram.file_io import PartFile
 
 log = logging.getLogger(__name__)
 
@@ -177,16 +178,16 @@ class SaveFile:
             workers = []
             errors = []
             queue = asyncio.Queue(1)
+            # Parts are read in a thread, so a slow disk doesn't block the event loop
+            part_file = PartFile(fp)
 
             try:
                 # One media session per DC is kept for all transfers (see Client._get_media_session)
                 session = await self._get_media_session(await self.storage.dc_id())
                 workers.extend(self.loop.create_task(worker(session)) for _ in range(workers_count))
 
-                fp.seek(part_size * file_part)
-
                 while True:
-                    chunk = fp.read(part_size)
+                    chunk = await part_file.read(part_size * file_part, part_size)
 
                     if not chunk:
                         if not is_big and not is_missing_part:
@@ -260,6 +261,8 @@ class SaveFile:
                     )
             finally:
                 await stop_workers()
+                # A read cancelled with the upload may still be running in its thread
+                await part_file.wait()
 
                 if isinstance(path, (str, PurePath)):
                     fp.close()
