@@ -314,6 +314,14 @@ class Auth:
 
                 log.debug("Server salt: %s", int.from_bytes(server_salt, "little"))
 
+                # The key exchange is authenticated, so its server time can be trusted: a clock that is off (even only
+                # a few minutes slow, which Telegram doesn't complain about) is corrected before the new session
+                # checks the server's msg_ids against it. delta_time used to be computed and not used.
+                server_time_msg_id = server_dh_inner_data.server_time * 2 ** 32
+
+                if not MsgId.is_in_time_window(server_time_msg_id):
+                    MsgId.set_server_time(server_time_msg_id)
+
                 log.info("Done auth key exchange: %s", set_client_dh_params_answer.__class__.__name__)
             except Exception as e:
                 log.info("Retrying due to %s: %s", type(e).__name__, e)

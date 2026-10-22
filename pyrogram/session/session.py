@@ -228,16 +228,20 @@ class Session:
         # Only the types are logged: contents include private messages, login codes and other secrets
         log.debug("Received: %s", ", ".join(type(m.body).__name__ for m in messages))
 
-        # With a local clock that is off, the server rejects our msg_ids (bad_msg_notification 16: too low, 17: too
-        # high) and its own msg_ids fall outside the time window checked below, so nothing would work. The server's
-        # time is taken from such a notification, before that check, but only when it answers a request that is
-        # waiting for its answer: a replayed old notification can't refer to one.
+        # With a local clock that is off, the server's msg_ids fall outside the time window checked below, so nothing
+        # would work. The server's time is taken, before that check, from an answer to a request that is waiting for
+        # it: a replayed old message can't refer to one. Either the server rejected our msg_id
+        # (bad_msg_notification 16: too low, 17: too high), or it accepted it and its answer is out of our window: a
+        # clock 31 to 300 seconds slow gets no notification (the server accepts msg_ids up to 300 seconds old), and
+        # every answer used to be dropped, with the connection, forever.
         # https://core.telegram.org/mtproto/service_messages_about_messages#notice-of-ignored-error-message
         for msg in messages:
+            if Session.answered_msg_id(msg.body) not in self.results:
+                continue
+
             if (
-                isinstance(msg.body, raw.types.BadMsgNotification)
-                and msg.body.error_code in (16, 17)
-                and msg.body.bad_msg_id in self.results
+                (isinstance(msg.body, raw.types.BadMsgNotification) and msg.body.error_code in (16, 17))
+                or not MsgId.is_in_time_window(msg.msg_id)
             ):
                 MsgId.set_server_time(msg.msg_id)
 
@@ -261,13 +265,13 @@ class Session:
 
                 # The time window applies to every message, including the first one after (re)connecting
                 # https://core.telegram.org/mtproto/security_guidelines#checking-msg-id
-                time_diff = (msg.msg_id - MsgId()) / 2 ** 32
+                time_diff = MsgId.seconds_from_now(msg.msg_id)
 
-                if time_diff > 30:
+                if time_diff > MsgId.MAX_SECONDS_AHEAD:
                     raise SecurityCheckMismatch("The msg_id belongs to over 30 seconds in the future. "
                                                 "Most likely the client time has to be synchronized.")
 
-                if time_diff < -300:
+                if time_diff < -MsgId.MAX_SECONDS_BEHIND:
                     raise SecurityCheckMismatch("The msg_id belongs to over 300 seconds in the past. "
                                                 "Most likely the client time has to be synchronized.")
             except SecurityCheckMismatch as e:
@@ -284,17 +288,10 @@ class Session:
             if isinstance(msg.body, raw.types.NewSessionCreated):
                 continue
 
-            msg_id = None
+            msg_id = Session.answered_msg_id(msg.body)
 
-            if isinstance(msg.body, (raw.types.BadMsgNotification, raw.types.BadServerSalt)):
-                msg_id = msg.body.bad_msg_id
-            elif isinstance(msg.body, (FutureSalts, raw.types.RpcResult)):
-                msg_id = msg.body.req_msg_id
-            elif isinstance(msg.body, raw.types.Pong):
-                msg_id = msg.body.msg_id
-            else:
-                if self.client is not None:
-                    self.loop.create_task(self.client.handle_updates(msg.body))
+            if msg_id is None and self.client is not None:
+                self.loop.create_task(self.client.handle_updates(msg.body))
 
             if msg_id in self.results:
                 self.results[msg_id].value = getattr(msg.body, "result", msg.body)
@@ -309,6 +306,20 @@ class Session:
                 pass
             else:
                 self.pending_acks.clear()
+
+    @staticmethod
+    def answered_msg_id(body) -> Optional[int]:
+        """The msg_id of the request a message from the server answers, None for anything else (e.g. updates)"""
+        if isinstance(body, (raw.types.BadMsgNotification, raw.types.BadServerSalt)):
+            return body.bad_msg_id
+
+        if isinstance(body, (FutureSalts, raw.types.RpcResult)):
+            return body.req_msg_id
+
+        if isinstance(body, raw.types.Pong):
+            return body.msg_id
+
+        return None
 
     async def ping_worker(self):
         log.info("PingTask started")

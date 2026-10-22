@@ -38,6 +38,7 @@ from pyrogram.file_id import FileId, FileType, FileUniqueId, FileUniqueType
 from pyrogram.parser.parser import Parser
 from pyrogram.raw.core import Bytes, TLObject
 from pyrogram.session.auth import Auth
+from pyrogram.session.internals import MsgId
 from pyrogram.storage import FileStorage
 
 T = raw.types
@@ -821,6 +822,8 @@ class FakeTelegramServer:
         self.mode = mode
         self.received = []
         self.auth_key = None
+        # Seconds the server's clock is ahead of the local one
+        self.skew = 0
 
     # Connection interface used by Auth
     async def connect(self):
@@ -867,7 +870,7 @@ class FakeTelegramServer:
 
             answer = T.ServerDHInnerData(nonce=self.nonce, server_nonce=self.server_nonce, g=3,
                                          dh_prime=dh_prime.to_bytes(256, "big"), g_a=g_a.to_bytes(256, "big"),
-                                         server_time=int(time.time())).write()
+                                         server_time=int(time.time() + self.skew)).write()
             answer_with_hash = sha1(answer).digest() + answer
             answer_with_hash += os.urandom(-len(answer_with_hash) % 16)
 
@@ -919,6 +922,28 @@ async def test_auth_key_exchange_succeeds(fake_server_auth):
 
     assert len(auth_key) == 256 and auth_key == server.auth_key
     assert server.inner_dc == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("skew, synchronized", [
+    # A clock a few minutes slow: Telegram accepts our msg_ids, so it never says so, but its answers look too new
+    (120, True),
+    (-400, True),
+    # Within the msg_id time window: nothing to correct
+    (10, False),
+], ids=["slow-clock", "fast-clock", "close-enough"])
+async def test_auth_key_exchange_takes_the_servers_time_when_the_clock_is_off(fake_server_auth, monkeypatch, skew,
+                                                                               synchronized):
+    monkeypatch.setattr(MsgId, "server_time_offset", 0)
+    auth, server = fake_server_auth("ok")
+    server.skew = skew
+
+    await auth.create()
+
+    if synchronized:
+        assert abs(MsgId.server_time_offset - skew) < 2
+    else:
+        assert MsgId.server_time_offset == 0
 
 
 @pytest.mark.asyncio

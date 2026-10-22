@@ -31,6 +31,11 @@ class MsgId:
     # +30 seconds), so a client whose clock is off has to correct it: see Session.handle_packet
     server_time_offset = 0
 
+    # A msg_id is only accepted within this many seconds ahead of or behind the receiver's time, by Telegram as by us
+    # https://core.telegram.org/mtproto/security_guidelines#checking-msg-id
+    MAX_SECONDS_AHEAD = 30
+    MAX_SECONDS_BEHIND = 300
+
     def __new__(cls) -> int:
         now = int(time.time() + cls.server_time_offset)
         cls.offset = (cls.offset + 4) if now == cls.last_time else 0
@@ -38,6 +43,15 @@ class MsgId:
         cls.last_time = now
 
         return msg_id
+
+    @classmethod
+    def seconds_from_now(cls, msg_id: int) -> float:
+        """How far the time in a msg_id is from Telegram's time, as far as it is known: positive in the future"""
+        return msg_id / 2 ** 32 - (time.time() + cls.server_time_offset)
+
+    @classmethod
+    def is_in_time_window(cls, msg_id: int) -> bool:
+        return -cls.MAX_SECONDS_BEHIND <= cls.seconds_from_now(msg_id) <= cls.MAX_SECONDS_AHEAD
 
     @classmethod
     def set_server_time(cls, server_msg_id: int):

@@ -281,6 +281,50 @@ async def test_requests_work_with_a_client_clock_that_is_off(monkeypatch, local_
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("answer", [
+    lambda msg_id: T.RpcResult(req_msg_id=msg_id, result=T.Pong(msg_id=msg_id, ping_id=1)),
+    lambda msg_id: T.Pong(msg_id=msg_id, ping_id=1),
+], ids=["rpc-result", "pong"])
+async def test_requests_work_with_a_client_clock_a_few_minutes_slow(monkeypatch, local_clock, answer):
+    # Telegram accepts msg_ids up to 300 seconds old, so it takes our requests without a bad_msg_notification, but
+    # its answers are over 30 seconds ahead of our clock: they were dropped (and the connection closed) every time
+    session = make_session([])
+    server = SkewedServer(session, monkeypatch, skew=120)
+
+    class Connection:
+        async def send(self, payload):
+            (msg_id,) = session.results
+            server.sent_msg_ids.append(msg_id)
+            await server.deliver(answer(msg_id))
+
+        close = server.close
+
+    session.connection = Connection()
+
+    result = await session.send(raw.functions.Ping(ping_id=1), timeout=1)
+
+    assert isinstance(result, T.Pong)
+    assert not server.closed
+    assert len(server.sent_msg_ids) == 1
+    assert abs(MsgId.server_time_offset - 120) < 5
+
+
+@pytest.mark.asyncio
+async def test_answer_to_no_pending_request_does_not_change_the_clock(monkeypatch, local_clock):
+    # An answer from the server that is out of the time window is trusted for the time only when it answers a request
+    # that is waiting: a replayed old answer can't refer to one
+    session = make_session([])
+    server = SkewedServer(session, monkeypatch, skew=120)
+    session.connection = server
+    session.results[MsgId()] = Result()
+
+    await server.deliver(T.RpcResult(req_msg_id=12345 * 2 ** 32, result=T.Pong(msg_id=0, ping_id=1)))
+
+    assert server.closed
+    assert MsgId.server_time_offset == 0
+
+
+@pytest.mark.asyncio
 async def test_unsolicited_bad_msg_notification_does_not_change_the_clock(monkeypatch, local_clock):
     # Only a notification answering a request that is waiting may set the time: an old one replayed after
     # reconnecting must not
