@@ -52,7 +52,7 @@ Hawkgram keeps the `pyrogram` import name, so existing code keeps working unchan
 
 ### Changelog
 
-#### Hawkgram 1.0.10 (unreleased): payment safety
+#### Hawkgram 1.0.10 (unreleased): payment safety and review fixes
 
 - **`send_gift` and `send_payment_form` only pay the price you agreed to** (behaviour change). They paid whatever
   the gift or invoice cost, so a bot passing on a gift id or an invoice link from a user could be made to spend any
@@ -66,6 +66,21 @@ Hawkgram keeps the `pyrogram` import name, so existing code keeps working unchan
   again. Other requests are still retried as before.
 - **`send_gift` can send a gift with a text.** Any text without formatting made it fail with `TypeError` before
   anything was sent.
+- **Every part of a file downloaded from Telegram's CDN is checked.** Only the parts whose hashes Telegram happened to
+  return were verified, so a CDN server could change the others (or all of a chunk, when no hash came back) without
+  it being noticed. Each part must now match a hash from Telegram for exactly its offset, or `CDNFileHashMismatch`
+  is raised and the download fails.
+- **`Message.ask` only takes the answer of the user it asks** (behaviour change). In a group, the next message from
+  anyone was returned as their answer. On a message you sent yourself, anyone may still answer.
+  `wait_for_message` has a new `user_id` parameter for the same. Two waits in one chat (e.g. two users answering a
+  bot at the same time) no longer cancel each other: the first one used to never get its answer.
+- **Clients work with a clock a few minutes slow.** Telegram accepts requests up to 300 seconds old, so it didn't
+  complain about such a clock, but its answers looked more than 30 seconds in the future and were all dropped, with
+  the connection, again and again. Telegram's time is now taken from an answer to a pending request, and from the
+  key exchange when a new authorization key is made.
+- **Business account methods work.** `get_business_account_star_balance`, `get_business_account_gifts`,
+  `delete_business_messages` and `transfer_business_account_stars` raised `TypeError` on every call.
+  `transfer_business_account_stars` refuses (`ValueError`) to pay more than `star_count`.
 
 #### Hawkgram 1.0.9: security review fixes
 
