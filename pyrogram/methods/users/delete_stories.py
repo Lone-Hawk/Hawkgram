@@ -47,6 +47,9 @@ class DeleteStories:
         Returns:
             `bool`: On success, a True is returned.
 
+        Raises:
+            RPCError: In case of a Telegram RPC error.
+
         Example:
             .. code-block:: python
 
@@ -65,11 +68,10 @@ class DeleteStories:
         else:
             peer = await self.resolve_peer("me")
 
-        try:
-            await self.invoke(
-                raw.functions.stories.DeleteStories(peer=peer,id=ids)
-            )
-        except Exception as e:
-            print(e)
-            return False
+        # Errors are raised, like everywhere else: every error, a FloodWait too, used to be printed to stdout and
+        # turned into False, so the caller couldn't tell a flood wait from a story that isn't there
+        await self.invoke(
+            raw.functions.stories.DeleteStories(peer=peer, id=ids)
+        )
+
         return True

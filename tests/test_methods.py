@@ -610,3 +610,28 @@ async def test_transfer_business_account_stars_never_pays_more(business_client, 
     assert not any(
         isinstance(getattr(r, "query", r), raw.functions.payments.SendStarsForm) for r in business_client.requests
     )
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# delete_stories raises errors
+# ---------------------------------------------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_delete_stories(client):
+    assert await client.delete_stories([1, 2]) is True
+
+    (request,) = client.requests
+    assert isinstance(request, raw.functions.stories.DeleteStories)
+    assert request.peer == T.InputPeerSelf() and request.id == [1, 2]
+
+
+@pytest.mark.asyncio
+async def test_delete_stories_raises_errors(client, capsys):
+    # Every error used to be printed to stdout and returned as False, a flood wait too
+    client.responses = [errors.FloodWait(value=5)]
+
+    with pytest.raises(errors.FloodWait):
+        await client.delete_stories(1)
+
+    assert capsys.readouterr().out == ""
+
