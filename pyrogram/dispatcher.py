@@ -465,6 +465,9 @@ class Dispatcher:
                 except Exception as error:
                     if parsed_update is not None:
                         await self._handle_exception(parsed_update, error)
+                    else:
+                        # A raw update handler's error (no parsed update for error handlers) used to vanish unlogged
+                        log.exception("Unhandled exception in a raw update handler: %s", error)
                 break
 
     async def _match_handler(
