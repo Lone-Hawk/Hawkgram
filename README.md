@@ -52,7 +52,7 @@ Hawkgram keeps the `pyrogram` import name, so existing code keeps working unchan
 
 ### Changelog
 
-#### Hawkgram 1.1.0 (unreleased): smoother transfers
+#### Hawkgram 1.1.0: smoother transfers
 
 - **Uploads and downloads no longer block the bot while the disk works.** Every part of a file was read or written on
   the event loop, so a slow disk paused everything else the client was doing (handlers, pings, other transfers). Files
