@@ -42,6 +42,21 @@ identity (bot API alternative) using Python.
 - **Async**: Fully asynchronous (also usable synchronously if wanted, for convenience).
 - **Powerful**: Full access to Telegram's API to execute any official client action and more.
 
+### Telegram API layer
+
+<!-- Update this section with every Telegram API layer update: the layer number and what the new layer adds. -->
+
+Hawkgram supports **Telegram API layer 229**. Every type and method of the layer is available through `pyrogram.raw`,
+and the newest features have high-level methods too:
+
+- **Communities**: groups of supergroups, channels and bots (`create_community`, `get_joined_communities`, ...).
+- **Ephemeral messages**: messages only one user of a chat sees (`send_ephemeral_message`, `on_ephemeral_message`).
+- **Rich messages**: headings, lists, tables and formulas from HTML or Markdown (`send_rich_message`).
+- **AI compose**: rewrite, proofread, translate or emojify text, with your own tones (`compose_text_with_ai`).
+- **Polls**: revoting, shuffled options, results hidden until closed and options added by users (`send_poll`).
+- **Bots**: managed bots (`create_managed_bot`), guard bots for joins (`answer_chat_join_query`) and guest chat queries
+  (`answer_guest_chat_query`).
+
 ### Installing
 
 ``` bash
