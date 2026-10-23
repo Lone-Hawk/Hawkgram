@@ -52,6 +52,20 @@ Hawkgram keeps the `pyrogram` import name, so existing code keeps working unchan
 
 ### Changelog
 
+#### Hawkgram 1.1.0 (unreleased): smoother transfers
+
+- **Uploads and downloads no longer block the bot while the disk works.** Every part of a file was read or written on
+  the event loop, so a slow disk paused everything else the client was doing (handlers, pings, other transfers). Files
+  are now read and written in a thread.
+- **Upload progress reaches 100% when the upload is done.** The progress callback was called when a part was queued,
+  before it was sent, so with big files it showed 100% while the last parts were still uploading. It now counts the
+  parts Telegram has confirmed, one callback at a time, and the reported size only grows.
+- **New: `progress_interval`.** `Client(progress_interval=5)` calls progress callbacks of uploads and downloads at most
+  every 5 seconds (always for the first and the last part), for bots that edit a status message from the callback.
+  `save_file` takes it for one upload. By default every part is reported, as before.
+- **Cancelling a request no longer breaks obfuscated connections.** With the obfuscated TCP transport, a send that was
+  cancelled while it was being encrypted broke the connection for every message after it.
+
 #### Hawkgram 1.0.11: review follow-ups
 
 - **A file Telegram's CDN can't finish sending is no longer saved as complete.** When the file couldn't be put back on
