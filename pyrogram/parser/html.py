@@ -32,6 +32,13 @@ from . import utils
 
 log = logging.getLogger(__name__)
 
+# Opening tags with simple attributes, at the beginning of a text (with the whitespace around them)
+OPENING_TAG_RE = re.compile(r"<[\w=\s\"]*>")
+LEADING_TAGS_RE = re.compile(r"\s*((?:<[\w=\s\"]*>\s*)+)")
+CLOSING_TAG_AT_END_RE = re.compile(r"</\w*>\Z")
+# Only this many characters at the end are searched for a closing tag, so the search can't scan the whole text
+MAX_TAG_LENGTH = 64
+
 
 class Parser(HTMLParser):
     MENTION_RE = re.compile(r"tg://user\?id=(\d+)")
@@ -119,10 +126,37 @@ class HTML:
     def __init__(self, client: Optional["pyrogram.Client"]):
         self.client = client
 
+    @staticmethod
+    def strip_around_edge_tags(text: str) -> str:
+        """Strip the whitespace at the beginning and the end of the text, also around the tags there, keeping the tags.
+
+        Each tag is matched whole: "<" and ">" used to be allowed inside one, so "<b>5 > 3</b>" lost the space after
+        ">" (as if "<b>5 >" were the tag) and "<i><b>x </b>c</i>" the one before "</b>". Both steps are linear.
+        """
+        leading = LEADING_TAGS_RE.match(text)
+
+        if leading:
+            text = "".join(OPENING_TAG_RE.findall(leading.group(1))) + text[leading.end():]
+
+        rest = text.rstrip()
+        closing_tags = []
+
+        while rest.endswith(">"):
+            closing = CLOSING_TAG_AT_END_RE.search(rest, max(0, len(rest) - MAX_TAG_LENGTH))
+
+            if not closing:
+                break
+
+            closing_tags.append(closing.group(0))
+            rest = rest[:closing.start()].rstrip()
+
+        if closing_tags:
+            text = rest + "".join(reversed(closing_tags))
+
+        return text
+
     async def parse(self, text: str):
-        # Strip whitespaces from the beginning and the end, but preserve closing tags
-        text = re.sub(r"^\s*(<[\w<>=\s\"]*>)\s*", r"\1", text)
-        text = re.sub(r"\s*(</[\w</>]*>)\s*$", r"\1", text)
+        text = self.strip_around_edge_tags(text)
 
         parser = Parser(self.client)
         parser.feed(utils.add_surrogates(text))

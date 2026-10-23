@@ -200,3 +200,30 @@ async def test_html_unparse_round_trips_markup_in_text():
     assert [type(e) for e in parsed["entities"]] == [pyrogram.raw.types.MessageEntityPre]
     assert (parsed["entities"][0].offset, parsed["entities"][0].length) == (9, 4)
     assert parsed["entities"][0].language == language
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("html, expected", [
+    # A ">" in the text was taken for the end of the first tag, and the space after it was stripped
+    ("<b>5 > 3</b>", "5 > 3"),
+    ("<blockquote>quote > x</blockquote>", "quote > x"),
+    # A closing tag followed by more text was taken for the last one, and the space before it was stripped
+    ("<i><b>x </b>c</i>", "x c"),
+    # Whitespace around the tags at the beginning and the end is still stripped
+    ("  <b>  bold</b>  ", "bold"),
+    ("<b> <i> both </i> </b> ", "both"),
+    # Without tags there, the text is left as it is
+    ("  plain  ", "  plain  "),
+])
+async def test_html_parse_strips_only_whitespace_around_edge_tags(html, expected):
+    assert (await HTML(None).parse(html))["message"] == expected
+
+
+def test_html_edge_tag_stripping_is_linear():
+    import time
+
+    for text in [" " * 4096 + "</b", "<" + " " * 4095, "</b>" * 1024]:
+        start = time.perf_counter()
+        HTML.strip_around_edge_tags(text)
+
+        assert time.perf_counter() - start < 0.5
