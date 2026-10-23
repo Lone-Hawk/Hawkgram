@@ -1404,6 +1404,17 @@ class Client(Methods):
 
                         position += h.limit
 
+                    # A short chunk ends the file. The CDN could end it early at a part boundary, where every part
+                    # it sent still matches its hash: the file must be as long as Telegram says (when the size is
+                    # known), and no hash may be left for a part after the end.
+                    if len(chunk) < chunk_size:
+                        end = offset_bytes + len(chunk)
+
+                        CDNFileHashMismatch.check(
+                            end >= (file_size or 0) and not any(offset >= end for offset in cdn_hashes),
+                            "the CDN sent the whole file"
+                        )
+
                     yield decrypted_chunk
 
                     current += 1

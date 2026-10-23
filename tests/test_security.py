@@ -384,6 +384,23 @@ async def test_cdn_chunk_with_unverified_parts_is_rejected(tmp_path, monkeypatch
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("hash_answers, file_size", [
+    # Telegram gave a hash for the part the CDN left out
+    ([[cdn_hash(CDN_PART), cdn_hash(2 * CDN_PART)]], 0),
+    # No hash is left over, but the file is shorter than Telegram says
+    ([[cdn_hash(CDN_PART)]], len(CDN_DATA)),
+], ids=["hash-left-over", "shorter-than-its-size"])
+async def test_cdn_file_ended_early_at_a_part_boundary_is_rejected(tmp_path, monkeypatch, hash_answers, file_size):
+    from pyrogram.errors import CDNFileHashMismatch
+
+    # Every part sent matches its hash, so the shortened file used to be accepted as complete
+    with pytest.raises(CDNFileHashMismatch, match="the CDN sent the whole file"):
+        await download_from_cdn(
+            tmp_path, monkeypatch, [cdn_hash(0)], hash_answers, sent=2 * CDN_PART, file_size=file_size
+        )
+
+
+@pytest.mark.asyncio
 async def test_cdn_file_that_cant_be_reuploaded_fails_the_download(tmp_path, monkeypatch):
     from pyrogram.errors import VolumeLocNotFound
 
