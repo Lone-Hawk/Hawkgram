@@ -52,7 +52,7 @@ Hawkgram keeps the `pyrogram` import name, so existing code keeps working unchan
 
 ### Changelog
 
-#### Hawkgram 1.0.11 (unreleased): review follow-ups
+#### Hawkgram 1.0.11: review follow-ups
 
 - **A file Telegram's CDN can't finish sending is no longer saved as complete.** When the file couldn't be put back on
   the CDN (`VolumeLocNotFound`), the download stopped where it was and the partial (or empty) file was saved as the
