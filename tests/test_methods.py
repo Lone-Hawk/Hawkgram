@@ -18,6 +18,7 @@
 
 """Regression tests for Client methods, with requests and answers going through FakeClient"""
 
+import asyncio
 from datetime import datetime
 from types import SimpleNamespace
 
@@ -613,7 +614,7 @@ async def test_transfer_business_account_stars_never_pays_more(business_client, 
 
 
 # ---------------------------------------------------------------------------------------------------------------
-# delete_stories raises errors
+# delete_stories raises errors, the updates watchdog survives them
 # ---------------------------------------------------------------------------------------------------------------
 
 @pytest.mark.asyncio
@@ -635,3 +636,23 @@ async def test_delete_stories_raises_errors(client, capsys):
 
     assert capsys.readouterr().out == ""
 
+
+@pytest.mark.asyncio
+async def test_updates_watchdog_keeps_running_after_an_error(client):
+    client.UPDATES_WATCHDOG_INTERVAL = 0.01
+    client.last_update_time = datetime(2000, 1, 1)
+    client.responses = [OSError("connection lost")]
+    task = asyncio.create_task(client.updates_watchdog())
+
+    # The first GetState failing used to end the watchdog: no update would be asked for again
+    for _ in range(100):
+        if len(client.requests) >= 2:
+            break
+
+        await asyncio.sleep(0.01)
+
+    client.updates_watchdog_event.set()
+    await asyncio.wait_for(task, 1)
+
+    assert len(client.requests) >= 2
+    assert all(isinstance(r, raw.functions.updates.GetState) for r in client.requests)

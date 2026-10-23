@@ -402,7 +402,11 @@ class Client(Methods):
                 break
 
             if datetime.now() - self.last_update_time > timedelta(seconds=self.UPDATES_WATCHDOG_INTERVAL):
-                await self.invoke(raw.functions.updates.GetState())
+                # An error (e.g. a connection lost for longer than the retries) used to end the watchdog for good
+                try:
+                    await self.invoke(raw.functions.updates.GetState())
+                except Exception as e:
+                    log.warning("Updates watchdog couldn't wake up the updates: %s", str(e) or repr(e))
 
     async def _wait_for_update_login_token(self):
         """
