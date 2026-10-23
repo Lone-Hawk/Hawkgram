@@ -52,6 +52,32 @@ Hawkgram keeps the `pyrogram` import name, so existing code keeps working unchan
 
 ### Changelog
 
+#### Hawkgram 1.0.11 (unreleased): review follow-ups
+
+- **A file Telegram's CDN can't finish sending is no longer saved as complete.** When the file couldn't be put back on
+  the CDN (`VolumeLocNotFound`), the download stopped where it was and the partial (or empty) file was saved as the
+  whole file. A CDN could also end a file early, exactly between two parts, without it being noticed. Both now fail
+  the download: `download_media` deletes the partial file and returns `None`, `stream_media` raises the error.
+- **`Message.text.markdown` and `.caption.markdown` escape text that looks like markup** (behaviour change). Text a
+  user typed, such as `**`, `>` at the start of a line or `[x](tg://user?id=…)`, became real formatting, quotes and
+  mentions when a bot sent the result again with Markdown. Such characters now get a backslash, and the Markdown
+  parser reads a backslash before `` * _ - ~ | ` [ ] ( ) > ! `` or another backslash as "plain character" (not in
+  code, where a backslash stays a backslash).
+- **HTML parsing keeps the spaces in the text.** A `>` in the text of a message starting with a tag was taken for the
+  end of that tag, so `<b>5 > 3</b>` became "5 >3" (also quotes in the default parse mode), and in
+  `<i><b>x </b>c</i>` the space before `</b>` was lost. Only whitespace around the tags at the beginning and the end
+  of the text is stripped now, as intended.
+- **A download named by the sender no longer replaces a file already in the folder** (behaviour change). Anyone could
+  send a document named like a file the bot keeps in its download folder and have it replaced. Such a download now
+  gets a free name like `name (1).ext`. A name you pass to `download_media` still replaces the file, as before.
+- **`delete_stories` raises errors** (behaviour change). Every error, a flood wait too, was printed to stdout and
+  turned into `False`.
+- **`Message.ask` only quotes the message in groups**, as documented. It quoted it in private chats too.
+- **Errors in raw update handlers are logged.** They disappeared without a trace for updates that have no parsed
+  form (and so no error handler).
+- **The updates watchdog keeps running after an error.** One failed request ended it for good, so the client stopped
+  asking Telegram to resume updates after long quiet periods.
+
 #### Hawkgram 1.0.10: payment safety and review fixes
 
 - **`send_gift` and `send_payment_form` only pay the price you agreed to** (behaviour change). They paid whatever
