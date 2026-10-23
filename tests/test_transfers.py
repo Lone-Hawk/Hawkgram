@@ -442,6 +442,27 @@ async def test_download_progress_interval(client, tmp_path, interval, expected):
     assert progress.currents == expected
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("with_progress", [False, True], ids=["no-progress", "progress"])
+async def test_download_of_media_without_a_size(client, tmp_path, with_progress):
+    # Media built by hand (e.g. types.Document without file_size) have file_size=None: the last-chunk check compared
+    # it with a number and raised TypeError for every download, so download_media returned None
+    data = os.urandom(CHUNK_SIZE + 10)
+    use_session(client, FakeMediaSession(data))
+    progress = ProgressRecorder()
+
+    packet = (document_file_id(), str(tmp_path), "video.mp4", False, None,
+              progress.callback if with_progress else None, ())
+
+    assert await client.handle_download(packet) == str(tmp_path / "video.mp4")
+    assert (tmp_path / "video.mp4").read_bytes() == data
+
+    if with_progress:
+        # The size is unknown, so the bytes downloaded so far are reported, as for a size of 0
+        assert progress.currents == [CHUNK_SIZE, 2 * CHUNK_SIZE]
+        assert {c[1] for c in progress.calls} == {0}
+
+
 def test_progress_throttle(monkeypatch):
     now = [100.0]
     monkeypatch.setattr(pyrogram.utils.ProgressThrottle, "clock", staticmethod(lambda: now[0]))

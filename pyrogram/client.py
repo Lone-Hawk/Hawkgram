@@ -1307,6 +1307,9 @@ class Client(Methods):
             chunk_size = 1024 * 1024
             offset_bytes = abs(offset) * chunk_size
             throttle = utils.ProgressThrottle(self.progress_interval)
+            # Unknown, like 0: media built by hand have file_size=None, which the comparisons below can't take
+            # ("0 < None" raised TypeError for every download of such media, with or without a progress callback)
+            file_size = file_size or 0
 
             dc_id = file_id.dc_id
 
