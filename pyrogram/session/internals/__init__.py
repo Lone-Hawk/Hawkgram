@@ -21,9 +21,11 @@
 from .data_center import DataCenter
 from .msg_factory import MsgFactory
 from .msg_id import MsgId
+from .sequencer import Sequencer
 
 __all__ = [
     "DataCenter",
     "MsgFactory",
-    "MsgId"
+    "MsgId",
+    "Sequencer"
 ]

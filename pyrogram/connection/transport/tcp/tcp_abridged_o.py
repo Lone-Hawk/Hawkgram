@@ -18,6 +18,7 @@
 #  You should have received a copy of the GNU Lesser General Public License
 #  along with Hawkgram.  If not, see <http://www.gnu.org/licenses/>.
 
+import asyncio
 import logging
 import os
 from typing import Optional, Tuple
@@ -37,6 +38,12 @@ class TCPAbridgedO(TCP):
 
         self.encrypt = None
         self.decrypt = None
+
+        # AES-CTR carries its state from one call to the next (the iv and state bytearrays are updated in place), so
+        # each payload must be encrypted after the one before it and written in that order. The crypto pool's one thread
+        # does that by itself, but pyrogram.crypto_executor can be replaced by a bigger pool, which would encrypt two
+        # payloads at once.
+        self.send_lock = asyncio.Lock()
 
     async def connect(self, address: Tuple[str, int]) -> None:
         await super().connect(address)
@@ -60,9 +67,16 @@ class TCPAbridgedO(TCP):
     async def send(self, data: bytes, *args) -> None:
         length = len(data) // 4
         data = (bytes([length]) if length <= 126 else b"\x7f" + length.to_bytes(3, "little")) + data
-        payload = await self.loop.run_in_executor(pyrogram.crypto_executor, aes.ctr256_encrypt, data, *self.encrypt)
 
-        await super().send(payload)
+        # Shielded: a payload whose encryption has advanced the CTR state must also be written, or every later payload
+        # is decrypted wrong by the server. Cancelling the caller no longer leaves the stream broken that way.
+        await asyncio.shield(self._encrypt_and_send(data))
+
+    async def _encrypt_and_send(self, data: bytes) -> None:
+        async with self.send_lock:
+            payload = await self.loop.run_in_executor(pyrogram.crypto_executor, aes.ctr256_encrypt, data, *self.encrypt)
+
+            await super().send(payload)
 
     async def recv(self, length: int = 0) -> Optional[bytes]:
         length = await super().recv(1)

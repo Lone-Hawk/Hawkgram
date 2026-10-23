@@ -38,7 +38,7 @@ from pyrogram.errors import (
 )
 from pyrogram.raw.all import layer
 from pyrogram.raw.core import TLObject, MsgContainer, Int, FutureSalts
-from .internals import MsgId, MsgFactory
+from .internals import MsgId, MsgFactory, Sequencer
 
 log = logging.getLogger(__name__)
 
@@ -110,6 +110,12 @@ class Session:
 
         self.recv_task = None
 
+        # Messages are encrypted and packets decrypted in the shared crypto pool. Its one thread happens to return them
+        # in order, but pyrogram.crypto_executor can be replaced by a bigger pool; these keep sending and processing
+        # them in order whatever the pool (see Sequencer). New ones for each connection.
+        self.send_order = Sequencer()
+        self.packet_order = Sequencer()
+
         self.is_started = asyncio.Event()
 
         self.loop = asyncio.get_event_loop()
@@ -125,6 +131,8 @@ class Session:
                 media=self.is_media,
                 protocol_factory=self.client.protocol_factory
             )
+            self.send_order = Sequencer()
+            self.packet_order = Sequencer()
 
             try:
                 await self.connection.connect()
@@ -201,6 +209,16 @@ class Session:
         await self.start()
 
     async def handle_packet(self, packet):
+        # recv_worker starts a task for each packet, and tasks start in the order they were created: the turn is taken
+        # in the order the packets arrived. They are decrypted concurrently, but processed in that order.
+        turn = self.packet_order.take()
+
+        try:
+            await self.process_packet(packet, turn)
+        finally:
+            turn.done()
+
+    async def process_packet(self, packet, turn):
         try:
             data = await self.loop.run_in_executor(
                 pyrogram.crypto_executor,
@@ -218,6 +236,9 @@ class Session:
             log.debug(e)
             self.loop.create_task(self.restart())
             return
+
+        # The msg_id checks below compare each message with the ones before it, and updates are passed on in order
+        await turn.wait()
 
         messages = (
             data.body.messages
@@ -296,6 +317,9 @@ class Session:
             if msg_id in self.results:
                 self.results[msg_id].value = getattr(msg.body, "result", msg.body)
                 self.results[msg_id].event.set()
+
+        # Sending the acks doesn't need to hold up the next packet
+        turn.done()
 
         if len(self.pending_acks) >= self.ACKS_THRESHOLD:
             log.debug("Sending %s acks", len(self.pending_acks))
@@ -386,21 +410,29 @@ class Session:
         # Only the type is logged: requests can carry bot tokens, login codes and password proofs
         log.debug("Sent: %s (msg_id %s)", type(data).__name__, msg_id)
 
-        payload = await self.loop.run_in_executor(
-            pyrogram.crypto_executor,
-            mtproto.pack,
-            message,
-            self.salt,
-            self.session_id,
-            self.auth_key,
-            self.auth_key_id
-        )
+        # Taken with the msg_id, so messages are sent in msg_id order however long each one takes to encrypt
+        turn = self.send_order.take()
 
         try:
-            await self.connection.send(payload)
-        except OSError as e:
-            self.results.pop(msg_id, None)
-            raise e
+            payload = await self.loop.run_in_executor(
+                pyrogram.crypto_executor,
+                mtproto.pack,
+                message,
+                self.salt,
+                self.session_id,
+                self.auth_key,
+                self.auth_key_id
+            )
+
+            await turn.wait()
+
+            try:
+                await self.connection.send(payload)
+            except OSError as e:
+                self.results.pop(msg_id, None)
+                raise e
+        finally:
+            turn.done()
 
         if wait_response:
             try:
