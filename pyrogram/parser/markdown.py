@@ -63,6 +63,15 @@ EMOJI_MARKUP = '<emoji id={}>{}</emoji>'
 FIXED_WIDTH_DELIMS = [CODE_DELIM, PRE_DELIM]
 CODE_TAG_RE = re.compile(r"<code>.*?</code>")
 
+# A backslash before one of these makes it plain text, outside code ("&gt;" is ">" once escaped by strict parsing).
+# unparse() escapes the characters of a text that would otherwise be read as markup.
+ESCAPABLE = ("&gt;", "\\", "*", "_", "-", "~", "|", "`", "[", "]", "(", ")", ">", "!")
+ESCAPE_PLACEHOLDER = "{}"
+# Code sections, in which a backslash is a backslash: (opening, closing), longest first
+CODE_SECTIONS = ((PRE_DELIM, PRE_DELIM), (CODE_DELIM, CODE_DELIM), ("<code>", "</code>"))
+# Characters that make delimiters when doubled, or next to the delimiters unparse() adds
+DELIM_CHARS = "*_-~|"
+
 
 class Markdown:
     def __init__(self, client: Optional["pyrogram.Client"]):
@@ -105,9 +114,54 @@ class Markdown:
 
         return '\n'.join(result)
 
+    @staticmethod
+    def hide_escapes(text: str):
+        """Replace each escaped character outside code by a placeholder: returns the text and the hidden characters"""
+        result = []
+        escapes = []
+        closing = None  # Of the code section the text is in
+        i = 0
+
+        while i < len(text):
+            if closing is not None:
+                if text.startswith(closing, i):
+                    result.append(closing)
+                    i += len(closing)
+                    closing = None
+                else:
+                    result.append(text[i])
+                    i += 1
+
+                continue
+
+            if text[i] == "\\":
+                token = next((t for t in ESCAPABLE if text.startswith(t, i + 1)), None)
+
+                if token is not None:
+                    result.append(ESCAPE_PLACEHOLDER.format(len(escapes)))
+                    escapes.append(token)
+                    i += 1 + len(token)
+                    continue
+
+            section = next(((o, c) for o, c in CODE_SECTIONS if text.startswith(o, i)), None)
+
+            if section is not None:
+                result.append(section[0])
+                i += len(section[0])
+                closing = section[1]
+                continue
+
+            result.append(text[i])
+            i += 1
+
+        return "".join(result), escapes
+
     async def parse(self, text: str, strict: bool = False):
         if strict:
             text = html.escape(text)
+
+        # Escaped characters are hidden from the markup parsing below, and put back as plain text at the end
+        text, escapes = self.hide_escapes(text)
         text = self.blockquote_parser(text)
 
         delims = set()
@@ -179,6 +233,9 @@ class Markdown:
 
         for placeholder, code_section in placeholders.items():
             text = text.replace(placeholder, code_section)
+
+        for i, token in enumerate(escapes):
+            text = text.replace(ESCAPE_PLACEHOLDER.format(i), token, 1)
 
         return await self.html.parse(text)
 
@@ -276,6 +333,38 @@ class Markdown:
                     else:
                         insert_at.append((s, i, '['))
                     insert_at.append((e, -i, f']({url})'))
+
+        # Text that would read as markup is escaped: "**" or "[x](tg://user?id=1)" typed by a user used to come back as
+        # formatting or a mention when the result was sent again with Markdown. Code keeps its text as it is.
+        code_ranges = [
+            (entity.offset, entity.offset + entity.length)
+            for entity in entities
+            if entity.type in (MessageEntityType.CODE, MessageEntityType.PRE)
+        ]
+        # Where delimiters are added: a character next to one could join it
+        boundaries = {at for at, _, _ in insert_at}
+
+        for p, c in enumerate(text):
+            if any(s <= p < e for s, e in code_ranges):
+                continue
+
+            if c in DELIM_CHARS:
+                escape = (
+                    (p > 0 and text[p - 1] == c)
+                    or (p + 1 < len(text) and text[p + 1] == c)
+                    or p in boundaries
+                    or p + 1 in boundaries
+                )
+            elif c == ">":
+                escape = p == 0 or text[p - 1] == "\n"
+            elif c == "!":
+                escape = p + 1 in boundaries
+            else:
+                escape = c in "\\`[]"
+
+            if escape:
+                # Sorted last for its position, so it ends up right before its character, after any opening delimiter
+                insert_at.append((p, float("inf"), "\\"))
 
         insert_at.sort(key=lambda t: (t[0], t[1]))
         while insert_at:
