@@ -45,7 +45,7 @@ from pyrogram.crypto import aes
 from pyrogram.errors import CDNFileHashMismatch
 from pyrogram.errors import (
     SessionPasswordNeeded, AuthBytesInvalid,
-    VolumeLocNotFound, ChannelPrivate,
+    ChannelPrivate,
     BadRequest, ChannelInvalid, PersistentTimestampInvalid, PersistentTimestampOutdated
 )
 from pyrogram.handlers.handler import Handler
@@ -1348,17 +1348,16 @@ class Client(Methods):
                     )
 
                     if isinstance(r2, raw.types.upload.CdnFileReuploadNeeded):
-                        try:
-                            await session.invoke(
-                                raw.functions.upload.ReuploadCdnFile(
-                                    file_token=r.file_token,
-                                    request_token=r2.request_token
-                                )
+                        # An error is raised, e.g. VolumeLocNotFound when the file can't be put back on the CDN: it
+                        # used to end the download quietly, so what had been fetched looked like the whole file
+                        await session.invoke(
+                            raw.functions.upload.ReuploadCdnFile(
+                                file_token=r.file_token,
+                                request_token=r2.request_token
                             )
-                        except VolumeLocNotFound:
-                            break
-                        else:
-                            continue
+                        )
+
+                        continue
 
                     chunk = r2.bytes
 

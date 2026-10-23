@@ -319,8 +319,10 @@ def cdn_hash(offset, data=CDN_DATA):
     return T.FileHash(offset=offset, limit=CDN_PART, hash=sha256(data[offset:offset + CDN_PART]).digest())
 
 
-async def download_from_cdn(tmp_path, monkeypatch, redirect_hashes, hash_answers):
-    """Download CDN_DATA through a CDN: returns the chunks received and the main DC session"""
+async def download_from_cdn(tmp_path, monkeypatch, redirect_hashes, hash_answers, sent=len(CDN_DATA),
+                            file_size=len(CDN_DATA), cdn_answers=()):
+    """Download CDN_DATA through a CDN, which sends its first *sent* bytes after *cdn_answers*: returns the chunks
+    received and the main DC session"""
     class FakeAuth:
         def __init__(self, *args):
             pass
@@ -337,12 +339,12 @@ async def download_from_cdn(tmp_path, monkeypatch, redirect_hashes, hash_answers
     )
 
     session = FakeMediaSession([redirect, *hash_answers])
-    cdn_session = FakeMediaSession([T.upload.CdnFile(bytes=encrypted)])
+    cdn_session = FakeMediaSession([*cdn_answers, T.upload.CdnFile(bytes=encrypted[:sent])])
     client = await client_with_media_sessions(tmp_path, monkeypatch, session, cdn_session)
     chunks = []
 
     try:
-        async for chunk in client.get_file(document_file_id(), len(CDN_DATA)):
+        async for chunk in client.get_file(document_file_id(), file_size):
             chunks.append(chunk)
     finally:
         assert session.answers == []
@@ -379,6 +381,46 @@ async def test_cdn_chunk_with_unverified_parts_is_rejected(tmp_path, monkeypatch
 
     with pytest.raises(CDNFileHashMismatch, match="a hash is given for every part"):
         await download_from_cdn(tmp_path, monkeypatch, redirect_hashes, hash_answers)
+
+
+@pytest.mark.asyncio
+async def test_cdn_file_that_cant_be_reuploaded_fails_the_download(tmp_path, monkeypatch):
+    from pyrogram.errors import VolumeLocNotFound
+
+    # The download used to end there, as if the file were complete (and empty)
+    with pytest.raises(VolumeLocNotFound):
+        await download_from_cdn(
+            tmp_path, monkeypatch, [], [VolumeLocNotFound()],
+            cdn_answers=[T.upload.CdnFileReuploadNeeded(request_token=b"request")]
+        )
+
+
+@pytest.mark.asyncio
+async def test_cdn_file_that_cant_be_reuploaded_is_not_saved(tmp_path, monkeypatch):
+    from pyrogram.errors import VolumeLocNotFound
+
+    class FakeAuth:
+        def __init__(self, *args):
+            pass
+
+        async def create(self):
+            return bytes(256)
+
+    monkeypatch.setattr("pyrogram.client.Auth", FakeAuth)
+
+    redirect = T.upload.FileCdnRedirect(
+        dc_id=2, file_token=b"token", encryption_key=bytes(32), encryption_iv=bytes(16), file_hashes=[]
+    )
+    session = FakeMediaSession([redirect, VolumeLocNotFound()])
+    cdn_session = FakeMediaSession([T.upload.CdnFileReuploadNeeded(request_token=b"request")])
+    client = await client_with_media_sessions(tmp_path, monkeypatch, session, cdn_session)
+    directory = tmp_path / "downloads"
+
+    result = await client.handle_download((document_file_id(), str(directory), "video.mp4", False, 10, None, ()))
+
+    # An empty "video.mp4" used to be saved and its path returned
+    assert result is None
+    assert list(directory.iterdir()) == []
 
 
 # ---------------------------------------------------------------------------------------------------------------
