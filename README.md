@@ -52,7 +52,7 @@ Hawkgram keeps the `pyrogram` import name, so existing code keeps working unchan
 
 ### Changelog
 
-#### Hawkgram 1.0.10 (unreleased): payment safety and review fixes
+#### Hawkgram 1.0.10: payment safety and review fixes
 
 - **`send_gift` and `send_payment_form` only pay the price you agreed to** (behaviour change). They paid whatever
   the gift or invoice cost, so a bot passing on a gift id or an invoice link from a user could be made to spend any
