@@ -1122,7 +1122,9 @@ class Client(Methods):
             else:
                 log.warning('[%s] No plugin loaded from "%s"', self.name, root)
 
-    async def handle_download(self, packet):
+    async def handle_download(self, packet, replace: bool = True):
+        """Download a file, to a file in *directory* or to memory. An existing file of the same name is replaced,
+        unless *replace* is False: then the file gets a free name, e.g. "name (1).ext"."""
         file_id, directory, file_name, in_memory, file_size, progress, progress_args = packet
 
         if not in_memory:
@@ -1164,6 +1166,10 @@ class Client(Methods):
                 return file
             else:
                 file.close()
+
+                if not replace:
+                    file_path = utils.reserve_free_file_path(file_path)
+
                 # Same directory, so the file is replaced at once (and an existing one overwritten, also on Windows)
                 os.replace(temp_file_path, file_path)
                 return file_path

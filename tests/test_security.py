@@ -109,7 +109,7 @@ async def test_download_media_strips_directories_from_sender_file_names(tmp_path
     client = make_client(tmp_path)
     captured = []
 
-    async def fake_handle_download(packet):
+    async def fake_handle_download(packet, replace=True):
         captured.append(packet)
 
     client.handle_download = fake_handle_download
@@ -261,6 +261,64 @@ async def test_download_replaces_an_existing_file(tmp_path, monkeypatch):
 
     assert (directory / "video.mp4").read_bytes() == b"new"
     assert [p.name for p in directory.iterdir()] == ["video.mp4"]
+
+
+@pytest.mark.asyncio
+async def test_download_named_by_the_sender_keeps_an_existing_file(tmp_path, monkeypatch):
+    session = FakeMediaSession([file_part(b"new"), file_part(b"newer")])
+    client = await client_with_media_sessions(tmp_path, monkeypatch, session)
+    client.PARENT_DIR = tmp_path
+    directory = tmp_path / "downloads"
+    directory.mkdir()
+    (directory / "config.json").write_bytes(b"the bot's own file")
+    # The name is the one the sender gave the document
+    document = SimpleNamespace(file_id=document_file_id().encode(), file_name="config.json", file_size=3,
+                               mime_type="application/json", date=None)
+
+    # It used to replace the file already in the download folder
+    first = await client.download_media(document)
+    second = await client.download_media(document)
+
+    assert (directory / "config.json").read_bytes() == b"the bot's own file"
+    assert (first, second) == (str(directory / "config (1).json"), str(directory / "config (2).json"))
+    assert (directory / "config (1).json").read_bytes() == b"new"
+    assert (directory / "config (2).json").read_bytes() == b"newer"
+
+
+@pytest.mark.asyncio
+async def test_download_named_by_the_caller_replaces_an_existing_file(tmp_path, monkeypatch):
+    session = FakeMediaSession([file_part(b"new")])
+    client = await client_with_media_sessions(tmp_path, monkeypatch, session)
+    directory = tmp_path / "downloads"
+    directory.mkdir()
+    (directory / "config.json").write_bytes(b"old content")
+    document = SimpleNamespace(file_id=document_file_id().encode(), file_name="sent.json", file_size=3,
+                               mime_type="application/json", date=None)
+
+    assert await client.download_media(document, file_name=str(directory / "config.json")) == str(
+        directory / "config.json"
+    )
+    assert (directory / "config.json").read_bytes() == b"new"
+
+
+@pytest.mark.asyncio
+async def test_concurrent_downloads_named_by_the_sender_get_their_own_files(tmp_path, monkeypatch):
+    class SlowSession(FakeMediaSession):
+        async def invoke(self, query, *args, **kwargs):
+            await asyncio.sleep(0.01)
+            return await super().invoke(query, *args, **kwargs)
+
+    session = SlowSession([file_part(b"one"), file_part(b"two")])
+    client = await client_with_media_sessions(tmp_path, monkeypatch, session)
+    directory = tmp_path / "downloads"
+    packet = (document_file_id(), str(directory), "video.mp4", False, 3, None, ())
+
+    results = await asyncio.gather(
+        client.handle_download(packet, replace=False), client.handle_download(packet, replace=False)
+    )
+
+    assert sorted(results) == [str(directory / "video (1).mp4"), str(directory / "video.mp4")]
+    assert sorted((directory / name).read_bytes() for name in ("video.mp4", "video (1).mp4")) == [b"one", b"two"]
 
 
 @pytest.mark.asyncio

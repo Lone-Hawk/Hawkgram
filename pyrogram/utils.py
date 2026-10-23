@@ -438,6 +438,25 @@ def sanitize_file_name(file_name: str) -> str:
     return file_name
 
 
+def reserve_free_file_path(file_path: str) -> str:
+    """Create an empty file at *file_path*, or at "name (1).ext", "name (2).ext"... if it exists, and return its path.
+
+    The file is created exclusively, so two downloads with the same name can't both get the same free path.
+    """
+    root, extension = os.path.splitext(file_path)
+    candidate = file_path
+    number = 0
+
+    while True:
+        try:
+            os.close(os.open(candidate, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666))
+        except FileExistsError:
+            number += 1
+            candidate = f"{root} ({number}){extension}"
+        else:
+            return candidate
+
+
 def get_input_channel(peer: "raw.base.InputPeer") -> "raw.types.InputChannel":
     """Convert a resolved channel peer (as returned by resolve_peer) into an InputChannel"""
     if isinstance(peer, raw.types.InputPeerChannel):

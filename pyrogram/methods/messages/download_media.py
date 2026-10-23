@@ -149,6 +149,9 @@ class DownloadMedia:
         date = getattr(media, "date", None)
 
         directory, file_name = os.path.split(file_name)
+        # A name chosen by the sender must not replace a file already there: anyone could send a document named like
+        # a file the bot keeps in its download folder
+        named_by_sender = not file_name and bool(media_file_name)
         file_name = file_name or media_file_name or ""
 
         # The name may come from another user (the document's file name), so it must never contain directories
@@ -183,7 +186,8 @@ class DownloadMedia:
             )
 
         downloader = self.handle_download(
-            (file_id_obj, directory, file_name, in_memory, file_size, progress, progress_args)
+            (file_id_obj, directory, file_name, in_memory, file_size, progress, progress_args),
+            replace=not named_by_sender
         )
 
         if block:
