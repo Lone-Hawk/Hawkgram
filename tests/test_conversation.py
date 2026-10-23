@@ -37,7 +37,10 @@ async def client():
     # Futures are created on the client's loop, which must be the one the test runs on
     client.loop = asyncio.get_running_loop()
 
+    client.sent = []
+
     async def send_message(**kwargs):
+        client.sent.append(kwargs)
         return types.Message(id=100, chat=group(), outgoing=True)
 
     client.send_message = send_message
@@ -135,3 +138,21 @@ async def test_a_wait_that_times_out_leaves_the_others(client):
 
     assert await deliver(client, group_message(client, ASKER_ID, 1))
     assert (await waiting).id == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("chat_type, quoted", [
+    # Compared with the string "private", the chat type never matched: private chats were quoted too
+    (enums.ChatType.PRIVATE, False),
+    (enums.ChatType.SUPERGROUP, True),
+], ids=["private", "group"])
+async def test_ask_quotes_by_default_only_in_groups(client, chat_type, quoted):
+    question = types.Message(
+        id=7, chat=types.Chat(id=ASKER_ID, type=chat_type), from_user=types.User(id=ASKER_ID), client=client
+    )
+
+    with pytest.raises(asyncio.TimeoutError):
+        await question.ask("Your name?", timeout=0.01)
+
+    (sent,) = client.sent
+    assert sent["reply_to_message_id"] == (7 if quoted else None)
