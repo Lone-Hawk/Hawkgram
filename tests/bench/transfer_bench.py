@@ -193,10 +193,17 @@ async def main() -> int:
         "--parallel", type=int, default=1,
         help="copies of each size uploaded at once, then downloaded at once (default: 1)"
     )
+    parser.add_argument(
+        "--upload-connections", type=int, default=1,
+        help="connections each big upload is sent over (default: 1)"
+    )
     args = parser.parse_args()
 
     if args.parallel < 1:
         parser.error("--parallel must be at least 1")
+
+    if args.upload_connections < 1:
+        parser.error("--upload-connections must be at least 1")
 
     logging.basicConfig(level=logging.WARNING)
 
@@ -222,7 +229,7 @@ async def main() -> int:
 
         app = Client(
             "bench", api_id=api_id, api_hash=api_hash, in_memory=True, ipv6=args.ipv6,
-            progress_interval=args.progress_interval,
+            progress_interval=args.progress_interval, upload_connections=args.upload_connections,
             # Uploads and downloads otherwise wait for each other: one transmission at a time by default
             max_concurrent_transmissions=args.parallel, **credentials
         )

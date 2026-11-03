@@ -77,7 +77,7 @@ async def client(tmp_path):
 
 
 def use_session(client, session):
-    async def get_media_session(dc_id, is_cdn=False):
+    async def get_media_session(dc_id, is_cdn=False, connection=0):
         return session
 
     client._get_media_session = get_media_session

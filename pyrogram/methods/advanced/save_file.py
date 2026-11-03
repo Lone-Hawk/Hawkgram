@@ -221,9 +221,14 @@ class SaveFile:
             part_file = PartFile(fp)
 
             try:
-                # One media session per DC is kept for all transfers (see Client._get_media_session)
-                session = await self._get_media_session(await self.storage.dc_id())
-                workers.extend(self.loop.create_task(worker(session)) for _ in range(workers_count))
+                # Media sessions are kept for all transfers (see Client._get_media_session). Speed is limited per
+                # connection, so a whole big file goes over as many as the client allows.
+                dc_id = await self.storage.dc_id()
+                connections = self.upload_connections if is_big and not is_missing_part else 1
+
+                for connection in range(connections):
+                    session = await self._get_media_session(dc_id, connection=connection)
+                    workers.extend(self.loop.create_task(worker(session)) for _ in range(workers_count))
 
                 while True:
                     chunk = await part_file.read(part_size * file_part, part_size)

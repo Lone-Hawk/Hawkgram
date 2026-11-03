@@ -272,3 +272,98 @@ async def test_big_upload_sends_every_part(setup):
     assert isinstance(uploaded, T.InputFileBig) and uploaded.parts == 22
     (session,) = setup.sessions
     assert uploaded_parts(session) == list(range(22))
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# upload_connections: big uploads over several connections
+# ---------------------------------------------------------------------------------------------------------------
+
+BIG_FILE = 11 * 1024 * 1024
+BIG_FILE_PARTS = 22
+
+
+def with_connections(setup, connections):
+    setup.client.me = SimpleNamespace(is_premium=False)
+    setup.client.upload_connections = connections
+
+
+@pytest.mark.asyncio
+async def test_big_upload_spreads_its_parts_over_the_connections(setup):
+    with_connections(setup, 3)
+
+    uploaded = await setup.client.save_file(BytesIO(bytes(BIG_FILE)))
+
+    assert isinstance(uploaded, T.InputFileBig) and uploaded.parts == BIG_FILE_PARTS
+    assert len(setup.sessions) == 3
+    # Each part goes out exactly once, and every connection carries some of them
+    assert sorted(part for s in setup.sessions for part in uploaded_parts(s)) == list(range(BIG_FILE_PARTS))
+    assert all(uploaded_parts(s) for s in setup.sessions)
+
+
+@pytest.mark.asyncio
+async def test_upload_connections_use_the_stored_auth_key(setup):
+    with_connections(setup, 3)
+
+    await setup.client.save_file(BytesIO(bytes(BIG_FILE)))
+
+    assert all(s.dc_id == OWN_DC and s.auth_key == b"k" * 256 and s.started for s in setup.sessions)
+    assert setup.auth_keys_created == 0 and setup.exports == 0
+
+
+@pytest.mark.asyncio
+async def test_upload_connections_are_kept_for_later_transfers(setup):
+    with_connections(setup, 3)
+
+    await setup.client.save_file(BytesIO(bytes(BIG_FILE)))
+    await setup.client.save_file(BytesIO(bytes(BIG_FILE)))
+    await download(setup.client, OWN_DC)
+
+    assert len(setup.sessions) == 3
+    assert not any(s.stopped for s in setup.sessions)
+    # terminate() stops whatever is in media_sessions
+    assert sorted(map(id, setup.client.media_sessions.values())) == sorted(map(id, setup.sessions))
+    # Downloads stay on the first connection
+    assert sum(isinstance(r, raw.functions.upload.GetFile) for r in setup.sessions[0].requests) == 1
+
+
+@pytest.mark.asyncio
+async def test_small_upload_opens_no_extra_connections(setup):
+    with_connections(setup, 3)
+
+    assert isinstance(await setup.client.save_file(BytesIO(b"x" * 1000)), T.InputFile)
+
+    assert len(setup.sessions) == 1
+
+
+@pytest.mark.asyncio
+async def test_missing_part_upload_opens_no_extra_connections(setup):
+    with_connections(setup, 3)
+
+    assert await setup.client.save_file(BytesIO(bytes(BIG_FILE)), file_id=123, file_part=2) is None
+
+    (session,) = setup.sessions
+    assert uploaded_parts(session) == [2]
+
+
+@pytest.mark.asyncio
+async def test_failed_part_on_any_connection_fails_the_upload(setup):
+    with_connections(setup, 3)
+    setup.fail_part = 7
+
+    with pytest.raises(FilePartInvalid):
+        await setup.client.save_file(BytesIO(bytes(BIG_FILE)))
+
+
+def test_upload_connections_default_to_one(tmp_path):
+    client = pyrogram.Client("media", api_id=1, api_hash="0" * 32, in_memory=True, workdir=str(tmp_path))
+
+    assert client.upload_connections == 1
+
+
+@pytest.mark.parametrize("connections", [0, -1])
+def test_invalid_upload_connections_are_refused(tmp_path, connections):
+    with pytest.raises(ValueError):
+        pyrogram.Client(
+            "media", api_id=1, api_hash="0" * 32, in_memory=True, workdir=str(tmp_path),
+            upload_connections=connections
+        )

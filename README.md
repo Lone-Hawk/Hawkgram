@@ -67,6 +67,13 @@ Hawkgram keeps the `pyrogram` import name, so existing code keeps working unchan
 
 ### Changelog
 
+#### Hawkgram 1.2.0: faster big uploads
+
+- **New: `upload_connections`.** `Client(upload_connections=8)` sends uploads over 10 MB over 8 connections instead of
+  one. Each connection tops out at a few MiB/s, so this is the way to go faster: in a benchmark, a server far from the
+  account's datacenter went from about 4 MiB/s to about 19 MiB/s. The default stays at 1, so nothing changes unless you
+  set it.
+
 #### Hawkgram 1.1.0: smoother transfers
 
 - **Uploads and downloads no longer block the bot while the disk works.** Every part of a file was read or written on

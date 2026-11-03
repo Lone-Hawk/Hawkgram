@@ -220,6 +220,13 @@ class Client(Methods):
             Call the progress callbacks of uploads and downloads at most once every this many seconds; the first and
             the last chunk are always reported. Useful when the callback edits a message, which Telegram rate limits.
             Defaults to None: called for every chunk.
+
+        upload_connections (``int``, *optional*):
+            Number of connections a big upload (over 10 MB) is sent over. Each connection carries four parts at a time
+            and tops out at a few MiB/s, so more of them make uploads faster, especially far from the account's
+            datacenter. They are opened by the first big upload and kept until the client stops.
+            A value that is too high may result in flood waits or dropped connections.
+            Defaults to 1.
     """
 
     APP_VERSION = f"Hawkgram {__version__}"
@@ -241,6 +248,7 @@ class Client(Methods):
     UPDATES_WATCHDOG_INTERVAL = 15 * 60
 
     MAX_CONCURRENT_TRANSMISSIONS = 1
+    UPLOAD_CONNECTIONS = 1
     MAX_CACHE_SIZE = 10000
 
     mimetypes = MimeTypes()
@@ -283,7 +291,8 @@ class Client(Methods):
         client_platform: "enums.ClientPlatform" = enums.ClientPlatform.OTHER,
         max_message_cache_size: int = MAX_CACHE_SIZE,
         max_business_user_connection_cache_size: int = MAX_CACHE_SIZE,
-        progress_interval: Optional[float] = None
+        progress_interval: Optional[float] = None,
+        upload_connections: int = UPLOAD_CONNECTIONS
     ):
         super().__init__()
 
@@ -320,6 +329,11 @@ class Client(Methods):
         self.max_concurrent_transmissions = max_concurrent_transmissions
         # Checked here, so a wrong value fails at once instead of at the first transfer
         self.progress_interval = utils.ProgressThrottle(progress_interval).interval
+
+        if upload_connections < 1:
+            raise ValueError("upload_connections must be at least 1")
+
+        self.upload_connections = upload_connections
         self.client_platform = client_platform
         self.max_message_cache_size = max_message_cache_size
         self.max_message_cache_size = max_message_cache_size
@@ -1194,14 +1208,16 @@ class Client(Methods):
                 os.replace(temp_file_path, file_path)
                 return file_path
 
-    async def _get_media_session(self, dc_id: int, is_cdn: bool = False) -> Session:
+    async def _get_media_session(self, dc_id: int, is_cdn: bool = False, connection: int = 0) -> Session:
         """Get the media session for a DC, creating it on first use.
 
         The session is kept and shared by every transfer to that DC until the client stops (terminate() closes it).
         Creating one per file meant a new connection each time and, for another DC, a new auth key exchange and an
         exported and imported authorization for every single download.
+
+        A *connection* above 0 is one of the extra sessions of a big upload (see upload_connections).
         """
-        key = ("cdn", dc_id) if is_cdn else dc_id
+        key = ("cdn", dc_id) if is_cdn else (dc_id, connection) if connection else dc_id
         session = self.media_sessions.get(key)
 
         if session is not None:
