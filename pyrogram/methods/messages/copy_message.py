@@ -51,7 +51,8 @@ class CopyMessage:
             "types.ReplyKeyboardMarkup",
             "types.ReplyKeyboardRemove",
             "types.ForceReply"
-        ] = None
+        ] = None,
+        random_id: int = None
     ) -> "types.Message":
         """Copy messages of any kind.
 
@@ -123,6 +124,11 @@ class CopyMessage:
                 Additional interface options. An object for an inline keyboard, custom reply keyboard,
                 instructions to remove reply keyboard or to force a reply from the user.
 
+            random_id (``int`` ``64-bit``, *optional*):
+                Your own unique identifier for this message, instead of a random one. Telegram sends one message
+                per identifier: sending again with the same one, say after a crash or a lost answer, sends nothing
+                new and returns the message sent the first time.
+
         Returns:
             :obj:`~pyrogram.types.Message`: On success, the copied message is returned.
 
@@ -149,5 +155,6 @@ class CopyMessage:
             protect_content=protect_content,
             allow_paid_broadcast=allow_paid_broadcast,
             invert_media=invert_media,
-            reply_markup=reply_markup
+            reply_markup=reply_markup,
+            random_id=random_id
         )

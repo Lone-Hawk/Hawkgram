@@ -66,7 +66,8 @@ class SendPoll:
         hide_results_until_closed: bool = None,
         allows_adding_options: bool = None,
         members_only: bool = None,
-        country_codes: List[str] = None
+        country_codes: List[str] = None,
+        random_id: int = None
     ) -> "types.Message":
         """Send a new poll.
 
@@ -196,6 +197,11 @@ class SendPoll:
             country_codes (List of ``str``, *optional*):
                 Two-letter ISO 3166-1 alpha-2 codes of the countries whose users can vote; for channels only.
 
+            random_id (``int`` ``64-bit``, *optional*):
+                Your own unique identifier for this message, instead of a random one. Telegram sends one message
+                per identifier: sending again with the same one, say after a crash or a lost answer, sends nothing
+                new and returns the message sent the first time.
+
         Returns:
             :obj:`~pyrogram.types.Message`: On success, the sent poll message is returned.
 
@@ -263,7 +269,7 @@ class SendPoll:
             message="",
             silent=disable_notification,
             reply_to=reply_to,
-            random_id=self.rnd_id(),
+            random_id=self.rnd_id() if random_id is None else random_id,
             schedule_date=utils.datetime_to_timestamp(schedule_date),
             noforwards=protect_content,
             allow_paid_floodskip=allow_paid_broadcast,

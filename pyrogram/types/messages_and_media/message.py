@@ -4836,7 +4836,8 @@ class Message(Object, Update):
             "types.ReplyKeyboardMarkup",
             "types.ReplyKeyboardRemove",
             "types.ForceReply"
-        ] = object
+        ] = object,
+        random_id: int = None
     ) -> Union["types.Message", List["types.Message"]]:
         """Bound method *copy* of :obj:`~pyrogram.types.Message`.
 
@@ -4919,6 +4920,11 @@ class Message(Object, Update):
                 If not specified, the original reply markup is kept.
                 Pass None to remove the reply markup.
 
+            random_id (``int`` ``64-bit``, *optional*):
+                Your own unique identifier for this message, instead of a random one. Telegram sends one message
+                per identifier: sending again with the same one, say after a crash or a lost answer, sends nothing
+                new and returns the message sent the first time.
+
         Returns:
             :obj:`~pyrogram.types.Message`: On success, the copied message is returned.
 
@@ -4941,6 +4947,7 @@ class Message(Object, Update):
                 parse_mode=enums.ParseMode.DISABLED,
                 disable_web_page_preview=not self.web_page_preview,
                 disable_notification=disable_notification,
+                random_id=random_id,
                 message_thread_id=message_thread_id,
                 reply_to_message_id=reply_to_message_id,
                 reply_to_chat_id=reply_to_chat_id,
@@ -4956,6 +4963,7 @@ class Message(Object, Update):
                 self._client.send_cached_media,
                 chat_id=chat_id,
                 disable_notification=disable_notification,
+                random_id=random_id,
                 message_thread_id=message_thread_id,
                 reply_to_message_id=reply_to_message_id,
                 reply_to_chat_id=reply_to_chat_id,
@@ -4991,6 +4999,7 @@ class Message(Object, Update):
                     last_name=self.contact.last_name,
                     vcard=self.contact.vcard,
                     disable_notification=disable_notification,
+                    random_id=random_id,
                     message_thread_id=message_thread_id,
                     schedule_date=schedule_date,
                     allow_paid_broadcast=allow_paid_broadcast,
@@ -5001,6 +5010,7 @@ class Message(Object, Update):
                     latitude=self.location.latitude,
                     longitude=self.location.longitude,
                     disable_notification=disable_notification,
+                    random_id=random_id,
                     message_thread_id=message_thread_id,
                     schedule_date=schedule_date,
                     allow_paid_broadcast=allow_paid_broadcast
@@ -5015,6 +5025,7 @@ class Message(Object, Update):
                     foursquare_id=self.venue.foursquare_id,
                     foursquare_type=self.venue.foursquare_type,
                     disable_notification=disable_notification,
+                    random_id=random_id,
                     message_thread_id=message_thread_id,
                     schedule_date=schedule_date,
                     allow_paid_broadcast=allow_paid_broadcast
@@ -5030,6 +5041,7 @@ class Message(Object, Update):
                         ) for opt in self.poll.options
                     ],
                     disable_notification=disable_notification,
+                    random_id=random_id,
                     message_thread_id=message_thread_id,
                     schedule_date=schedule_date,
                     allow_paid_broadcast=allow_paid_broadcast
@@ -5039,6 +5051,7 @@ class Message(Object, Update):
                     chat_id,
                     game_short_name=self.game.short_name,
                     disable_notification=disable_notification,
+                    random_id=random_id,
                     message_thread_id=message_thread_id,
                     allow_paid_broadcast=allow_paid_broadcast
                 )
@@ -5052,6 +5065,7 @@ class Message(Object, Update):
                     large_media=self.web_page_preview.force_large_media,
                     invert_media=self.web_page_preview.invert_media,
                     disable_notification=disable_notification,
+                    random_id=random_id,
                     message_thread_id=message_thread_id,
                     reply_to_message_id=reply_to_message_id,
                     reply_to_chat_id=reply_to_chat_id,

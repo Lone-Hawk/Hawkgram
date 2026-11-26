@@ -42,7 +42,8 @@ class SendGame:
             "types.ReplyKeyboardMarkup",
             "types.ReplyKeyboardRemove",
             "types.ForceReply"
-        ] = None
+        ] = None,
+        random_id: int = None
     ) -> "types.Message":
         """Send a game.
 
@@ -86,6 +87,11 @@ class SendGame:
                 An object for an inline keyboard. If empty, one ‘Play game_title’ button will be shown automatically.
                 If not empty, the first button must launch the game.
 
+            random_id (``int`` ``64-bit``, *optional*):
+                Your own unique identifier for this message, instead of a random one. Telegram sends one message
+                per identifier: sending again with the same one, say after a crash or a lost answer, sends nothing
+                new and returns the message sent the first time.
+
         Returns:
             :obj:`~pyrogram.types.Message`: On success, the sent game message is returned.
 
@@ -112,7 +118,7 @@ class SendGame:
             message="",
             silent=disable_notification or None,
             reply_to=reply_to,
-            random_id=self.rnd_id(),
+            random_id=self.rnd_id() if random_id is None else random_id,
             noforwards=protect_content,
             allow_paid_floodskip=allow_paid_broadcast,
             effect=message_effect_id,

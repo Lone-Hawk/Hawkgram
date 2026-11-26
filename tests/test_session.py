@@ -348,3 +348,24 @@ async def test_messages_outside_the_time_window_are_still_dropped(monkeypatch, l
     await server.deliver(T.Pong(msg_id=0, ping_id=1))
 
     assert server.closed
+
+
+@pytest.mark.asyncio
+async def test_a_used_random_id_is_not_sent_again():
+    from pyrogram.errors import RandomIdDuplicate
+
+    session = silent_session()
+    sent = []
+    query = raw.functions.messages.SendMessage(peer=T.InputPeerSelf(), message="hi", random_id=7)
+
+    async def send(query, *args, **kwargs):
+        sent.append(query)
+        raise RandomIdDuplicate()
+
+    session.send = send
+
+    # The message went out with this random_id before: asking again only gets the same answer
+    with pytest.raises(RandomIdDuplicate):
+        await session.invoke(query)
+
+    assert sent == [query]

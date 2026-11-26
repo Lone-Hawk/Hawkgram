@@ -63,7 +63,8 @@ class SendDocument:
             "types.ForceReply"
         ] = None,
         progress: Callable = None,
-        progress_args: tuple = ()
+        progress_args: tuple = (),
+        random_id: int = None
     ) -> Optional["types.Message"]:
         """Send generic files.
 
@@ -171,6 +172,11 @@ class SendDocument:
                 You can pass anything you need to be available in the progress callback scope; for example, a Message
                 object or a Client instance in order to edit the message with the updated progress status.
 
+            random_id (``int`` ``64-bit``, *optional*):
+                Your own unique identifier for this message, instead of a random one. Telegram sends one message
+                per identifier: sending again with the same one, say after a crash or a lost answer, sends nothing
+                new and returns the message sent the first time.
+
         Other Parameters:
             current (``int``):
                 The amount of bytes transmitted so far.
@@ -255,7 +261,7 @@ class SendDocument:
                         media=media,
                         silent=disable_notification or None,
                         reply_to=reply_to,
-                        random_id=self.rnd_id(),
+                        random_id=self.rnd_id() if random_id is None else random_id,
                         schedule_date=utils.datetime_to_timestamp(schedule_date),
                         noforwards=protect_content,
                         allow_paid_floodskip=allow_paid_broadcast,

@@ -33,7 +33,7 @@ from pyrogram.crypto import mtproto
 from pyrogram.errors import (
     RPCError, InternalServerError, AuthKeyDuplicated,
     FloodWait, FloodPremiumWait,
-    ServiceUnavailable, BadMsgNotification,
+    ServiceUnavailable, BadMsgNotification, RandomIdDuplicate,
     SecurityCheckMismatch, Unauthorized
 )
 from pyrogram.raw.all import layer
@@ -503,7 +503,8 @@ class Session:
 
                 await asyncio.sleep(amount)
             except (OSError, InternalServerError, ServiceUnavailable) as e:
-                if retries == 0:
+                # A message whose random_id was used already went out before: sending it again only gets the same answer
+                if retries == 0 or isinstance(e, RandomIdDuplicate):
                     raise e from None
 
                 if isinstance(inner_query, Session.NOT_RESENT):

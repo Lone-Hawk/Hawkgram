@@ -67,6 +67,19 @@ Hawkgram keeps the `pyrogram` import name, so existing code keeps working unchan
 
 ### Changelog
 
+#### Hawkgram 1.3.0: sends that never go out twice
+
+- **New: `random_id`.** `send_message`, `send_document`, `send_cached_media`, `copy_message` and `Message.copy` (and
+  the other send methods `copy` can use) take your own identifier for the message; `send_media_group` takes
+  `random_ids`, one per item. Telegram sends one message per identifier: sending again with the same one, say after
+  your bot crashed or an answer was lost, sends nothing new and returns the message sent the first time, across
+  restarts and sessions. Derive the identifier from something stable, such as a row in your database, and a retried
+  send can't reach the chat twice. Checked against the real servers for a text, a file and an album.
+- **`send_media_group` returns the messages in the order of `media`.** Telegram may list them in another order (an
+  album sent again comes back reversed); they are now sorted by the identifier of each one.
+- **`RANDOM_ID_DUPLICATE` is no longer retried.** It was treated like any internal server error and sent again up to
+  ten times, which only got the same answer.
+
 #### Hawkgram 1.2.0: faster big uploads
 
 - **New: `upload_connections`.** `Client(upload_connections=8)` sends uploads over 10 MB over 8 connections instead of

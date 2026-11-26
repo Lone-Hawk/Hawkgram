@@ -53,7 +53,8 @@ class SendMessage:
             "types.ReplyKeyboardMarkup",
             "types.ReplyKeyboardRemove",
             "types.ForceReply"
-        ] = None
+        ] = None,
+        random_id: int = None
     ) -> "types.Message":
         """Send text messages.
 
@@ -134,6 +135,11 @@ class SendMessage:
                 Additional interface options. An object for an inline keyboard, custom reply keyboard,
                 instructions to remove reply keyboard or to force a reply from the user.
 
+            random_id (``int`` ``64-bit``, *optional*):
+                Your own unique identifier for this message, instead of a random one. Telegram sends one message
+                per identifier: sending again with the same one, say after a crash or a lost answer, sends nothing
+                new and returns the message sent the first time.
+
         Returns:
             :obj:`~pyrogram.types.Message`: On success, the sent text message is returned.
 
@@ -192,7 +198,7 @@ class SendMessage:
             no_webpage=disable_web_page_preview or None,
             silent=disable_notification or None,
             reply_to=reply_to,
-            random_id=self.rnd_id(),
+            random_id=self.rnd_id() if random_id is None else random_id,
             schedule_date=utils.datetime_to_timestamp(schedule_date),
             reply_markup=await reply_markup.write(self) if reply_markup else None,
             message=message,

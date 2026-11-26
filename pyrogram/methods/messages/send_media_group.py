@@ -68,6 +68,7 @@ class SendMediaGroup:
         invert_media: bool = None,
         progress: Callable = None,
         progress_args: tuple = (),
+        random_ids: List[int] = None
     ) -> List["types.Message"]:
         """Send a group of photos or videos as an album.
 
@@ -150,6 +151,11 @@ class SendMediaGroup:
                 You can pass anything you need to be available in the progress callback scope; for example, a Message
                 object or a Client instance in order to edit the message with the updated progress status.
 
+            random_ids (List of ``int`` ``64-bit``, *optional*):
+                Your own unique identifiers for the messages, one per item of ``media``, instead of random ones.
+                Telegram sends one message per identifier: sending the album again with the same ones, say after a
+                crash or a lost answer, sends nothing new and returns the messages sent the first time.
+
         Other Parameters:
             current (``int``):
                 The amount of bytes transmitted so far.
@@ -178,6 +184,9 @@ class SendMediaGroup:
                     ]
                 )
         """
+        if random_ids is not None and len(random_ids) != len(media):
+            raise ValueError(f"random_ids has {len(random_ids)} identifiers for {len(media)} media")
+
         multi_media = []
 
         reply_to = await utils.get_reply_to(
@@ -517,7 +526,7 @@ class SendMediaGroup:
             multi_media.append(
                 raw.types.InputSingleMedia(
                     media=media,
-                    random_id=self.rnd_id(),
+                    random_id=random_ids[len(multi_media)] if random_ids else self.rnd_id(),
                     **(await utils.parse_text_entities(self, i.caption, i.parse_mode, i.caption_entities)),
                 ),
             )
@@ -545,7 +554,7 @@ class SendMediaGroup:
         else:
             r = await self.invoke(rpc, sleep_threshold=60)
 
-        return await utils.parse_messages(
+        messages = await utils.parse_messages(
             self,
             raw.types.messages.Messages(
                 messages=[m.message for m in filter(
@@ -561,3 +570,10 @@ class SendMediaGroup:
             ),
             business_connection_id=business_connection_id,
         )
+
+        # Updates may list the messages in any order (an album sent again comes back reversed): put them in the
+        # order of media, by the random_id each UpdateMessageID carries
+        random_id_of = {u.id: u.random_id for u in r.updates if isinstance(u, raw.types.UpdateMessageID)}
+        position = {m.random_id: n for n, m in enumerate(multi_media)}
+
+        return sorted(messages, key=lambda m: position.get(random_id_of.get(m.id), len(position)))

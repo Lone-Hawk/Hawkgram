@@ -55,7 +55,8 @@ class SendVenue:
             "types.ReplyKeyboardMarkup",
             "types.ReplyKeyboardRemove",
             "types.ForceReply"
-        ] = None
+        ] = None,
+        random_id: int = None
     ) -> "types.Message":
         """Send information about a venue.
 
@@ -136,6 +137,11 @@ class SendVenue:
                 Additional interface options. An object for an inline keyboard, custom reply keyboard,
                 instructions to remove reply keyboard or to force a reply from the user.
 
+            random_id (``int`` ``64-bit``, *optional*):
+                Your own unique identifier for this message, instead of a random one. Telegram sends one message
+                per identifier: sending again with the same one, say after a crash or a lost answer, sends nothing
+                new and returns the message sent the first time.
+
         Returns:
             :obj:`~pyrogram.types.Message`: On success, the sent venue message is returned.
 
@@ -174,7 +180,7 @@ class SendVenue:
             message="",
             silent=disable_notification or None,
             reply_to=reply_to,
-            random_id=self.rnd_id(),
+            random_id=self.rnd_id() if random_id is None else random_id,
             schedule_date=utils.datetime_to_timestamp(schedule_date),
             noforwards=protect_content,
             allow_paid_floodskip=allow_paid_broadcast,

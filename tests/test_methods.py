@@ -656,3 +656,139 @@ async def test_updates_watchdog_keeps_running_after_an_error(client):
 
     assert len(client.requests) >= 2
     assert all(isinstance(r, raw.functions.updates.GetState) for r in client.requests)
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# random_id: a caller's own message identifier, so a retried send never goes out twice
+# ---------------------------------------------------------------------------------------------------------------
+
+def sent_short(message_id=9):
+    return T.UpdateShortSentMessage(id=message_id, pts=1, pts_count=1, date=1, out=True)
+
+
+def document_message(message_id, peer):
+    return T.Message(id=message_id, peer_id=peer, date=1, message="", media=T.MessageMediaDocument(
+        document=T.Document(
+            id=50, access_hash=5, file_reference=b"ref", date=1, mime_type="video/x-matroska", size=10, dc_id=2,
+            attributes=[T.DocumentAttributeFilename(file_name="film.mkv")],
+        )
+    ))
+
+
+def found_with_user(*messages):
+    return T.messages.Messages(messages=list(messages), topics=[], chats=[], users=[raw_user()])
+
+
+def new_message(raw_message):
+    return updates(T.UpdateNewMessage(message=raw_message, pts=1, pts_count=1), users=[raw_user()])
+
+
+@pytest.mark.asyncio
+async def test_send_message_uses_the_callers_random_id(client):
+    client.responses = [sent_short()]
+
+    await client.send_message(USER_ID, "hi", random_id=123456789)
+
+    assert client.requests[0].random_id == 123456789
+
+
+@pytest.mark.asyncio
+async def test_send_message_without_random_id_picks_a_new_one_each_time(client):
+    client.responses = [sent_short(9), sent_short(10)]
+
+    await client.send_message(USER_ID, "hi")
+    await client.send_message(USER_ID, "hi")
+
+    first, second = (r.random_id for r in client.requests)
+    assert first and second and first != second
+
+
+@pytest.mark.asyncio
+async def test_a_used_random_id_raises_random_id_duplicate(client):
+    client.responses = [errors.RandomIdDuplicate()]
+
+    with pytest.raises(errors.RandomIdDuplicate):
+        await client.send_message(USER_ID, "hi", random_id=7)
+
+
+@pytest.mark.asyncio
+async def test_copy_message_of_a_file_uses_the_callers_random_id(client):
+    peer = T.PeerUser(user_id=USER_ID)
+    client.responses = [found_with_user(document_message(4, peer)), new_message(document_message(9, peer))]
+
+    copied = await client.copy_message(USER_ID, USER_ID, 4, caption="film", random_id=-42)
+
+    get, send = client.requests
+    assert isinstance(send, raw.functions.messages.SendMedia)
+    assert send.random_id == -42
+    assert copied.id == 9
+
+
+@pytest.mark.asyncio
+async def test_copy_message_of_a_text_uses_the_callers_random_id(client):
+    peer = T.PeerUser(user_id=USER_ID)
+    client.responses = [found_with_user(message(4, peer)), sent_short()]
+
+    await client.copy_message(USER_ID, USER_ID, 4, random_id=77)
+
+    assert isinstance(client.requests[1], raw.functions.messages.SendMessage)
+    assert client.requests[1].random_id == 77
+
+
+@pytest.mark.asyncio
+async def test_send_document_by_file_id_uses_the_callers_random_id(client):
+    peer = T.PeerUser(user_id=USER_ID)
+    client.responses = [found_with_user(document_message(4, peer)), new_message(document_message(9, peer))]
+    file_id = (await client.get_messages(USER_ID, 4)).document.file_id
+
+    await client.send_document(USER_ID, file_id, random_id=88)
+
+    assert client.requests[-1].random_id == 88
+
+
+@pytest.mark.asyncio
+async def test_send_media_group_uses_one_random_id_per_item(client):
+    peer = T.PeerUser(user_id=USER_ID)
+    client.responses = [found_with_user(document_message(4, peer))]
+    file_id = (await client.get_messages(USER_ID, 4)).document.file_id
+    client.responses = [updates(
+        T.UpdateNewMessage(message=document_message(9, peer), pts=1, pts_count=1),
+        T.UpdateNewMessage(message=document_message(10, peer), pts=2, pts_count=1),
+        users=[raw_user()],
+    )]
+
+    sent = await client.send_media_group(
+        USER_ID, [types.InputMediaDocument(file_id), types.InputMediaDocument(file_id)], random_ids=[11, 12]
+    )
+
+    assert [m.random_id for m in client.requests[-1].multi_media] == [11, 12]
+    assert [m.id for m in sent] == [9, 10]
+
+
+@pytest.mark.asyncio
+async def test_send_media_group_refuses_a_wrong_number_of_random_ids(client):
+    with pytest.raises(ValueError, match="2 identifiers for 1 media"):
+        await client.send_media_group(USER_ID, [types.InputMediaDocument("x")], random_ids=[1, 2])
+
+    assert client.requests == []
+
+
+@pytest.mark.asyncio
+async def test_send_media_group_returns_the_messages_in_the_order_of_media(client):
+    # An album sent again with the same random_ids comes back with its messages reversed
+    peer = T.PeerUser(user_id=USER_ID)
+    client.responses = [found_with_user(document_message(4, peer))]
+    file_id = (await client.get_messages(USER_ID, 4)).document.file_id
+    client.responses = [updates(
+        T.UpdateMessageID(id=9, random_id=11),
+        T.UpdateMessageID(id=10, random_id=12),
+        T.UpdateNewMessage(message=document_message(10, peer), pts=2, pts_count=1),
+        T.UpdateNewMessage(message=document_message(9, peer), pts=1, pts_count=1),
+        users=[raw_user()],
+    )]
+
+    sent = await client.send_media_group(
+        USER_ID, [types.InputMediaDocument(file_id), types.InputMediaDocument(file_id)], random_ids=[11, 12]
+    )
+
+    assert [m.id for m in sent] == [9, 10]
